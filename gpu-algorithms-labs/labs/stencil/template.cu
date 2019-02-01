@@ -3,19 +3,61 @@
 
 #include "helper.hpp"
 
-#define TILE_SIZE 30
-
+#define TILE_SIZE 32
 __global__ void kernel(int *A0, int *Anext, int nx, int ny, int nz) {
 
   // INSERT KERNEL CODE HERE
+#define in(ii,jj,kk) A0[((kk)*ny+jj)*nx+ii]
+#define out(ii,jj,kk) Anext[((kk)*ny+jj)*nx+ii]
+__shared__ int ds_A[TILE_SIZE][TILE_SIZE];
+int bx = blockIdx.x; int by = blockIdx.y;
+int tx = threadIdx.x; int ty = threadIdx.y;
+int i = bx * (TILE_SIZE) + tx, j = by * (TILE_SIZE) + ty;
+int bottom, current, top;
+
+if (i<nx && j<ny){
+  bottom = in(i,j,0);
+  current = in(i,j,1);
+  top = in(i,j,2);
   
+  }
+
+ds_A[ty][tx] = current;
+__syncthreads();
+for (int k=1;k<nz-1;k++){
+  if (i>0 && i<nx-1 && j>0 && j<ny-1){
+    out(i,j,k) = bottom + top + ((tx>0)? ds_A[ty][tx-1]:in(i-1,j,k))+
+        ((tx<blockDim.x-1)? ds_A[ty][tx+1]:in(i+1,j,k))+
+        ((ty>0)? ds_A[ty-1][tx]:in(i,j-1,k))+
+        ((ty<blockDim.y-1)? ds_A[ty+1][tx]:in(i,j+1,k))-6*current;
+    }
+    __syncthreads();
+    
+    bottom = current; ds_A[ty][tx] = top; current = top; 
+    // __syncthreads();
+    if (i<nx && j<ny && k<nz-2){
+      top = in(i,j,k+2);
+       
+      }
+    __syncthreads();
+    
+  }
+  
+ 
+
+#undef A0
+#undef Anext  
 
 }
 
 void launchStencil(int* A0, int* Anext, int nx, int ny, int nz) {
 
   // INSERT CODE HERE
+int BLOCKSIZE = 32;
+dim3 dimBlock (BLOCKSIZE,BLOCKSIZE,1);
+dim3 dimGrid (ceil(float(nx)/BLOCKSIZE),ceil(float(ny)/BLOCKSIZE),1);
 
+kernel<<<dimGrid,dimBlock>>>(A0,Anext,nx,ny,nz);
 }
 
 
