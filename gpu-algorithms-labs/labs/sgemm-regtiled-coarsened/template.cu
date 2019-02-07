@@ -33,7 +33,6 @@ __global__ void mysgemm(int m, int n, int k, const float *A, const float *B, flo
   int tx = threadIdx.x; int ty = threadIdx.y;
   int Row = by * TILE_SZ_A + tx;
   int Col = bx * TILE_SZ_B;
-  //float A_matrix[TILE_SZ_RATIO], 
   float C_matrix[TILE_SZ_B]={0};
   float r;
   int shared_x = tx % TILE_SZ_B;
@@ -41,59 +40,28 @@ __global__ void mysgemm(int m, int n, int k, const float *A, const float *B, flo
   int num_iteration = ceil(float(k)/TILE_SZ_RATIO);
   for (int iter=0;iter<num_iteration;iter++){
     if (iter * TILE_SZ_RATIO+shared_y <k && Col+shared_x<n){
-    Bds[shared_y][shared_x] = B(iter*TILE_SZ_RATIO+shared_y,Col+shared_x);
-  }
+      Bds[shared_y][shared_x] = B(iter*TILE_SZ_RATIO+shared_y,Col+shared_x);
+    }
     else{
-    Bds[shared_y][shared_x]=0;
+      Bds[shared_y][shared_x]=0;
     }
   
-   __syncthreads();
-  for (int reg=0;reg<TILE_SZ_RATIO;reg++){
-    r = A(Row,reg+iter*TILE_SZ_RATIO);
-    for (int ii=0;ii<TILE_SZ_B;ii++){
-    C_matrix[ii] += r * Bds[reg][ii];
-  }
-  }
-  __syncthreads();
+     __syncthreads();
+    for (int reg=0;reg<TILE_SZ_RATIO;reg++){
+      r = A(Row,reg+iter*TILE_SZ_RATIO);
+      for (int ii=0;ii<TILE_SZ_B;ii++){
+        C_matrix[ii] += r * Bds[reg][ii];
+      }
+    }
+    __syncthreads();
   }
   for (int jj=0;jj<TILE_SZ_B;jj++){
-  if (Row<m && Col+jj<n){
-  C(Row,Col+jj) = C_matrix[jj];
-  }
-  }
-
-  
-  /*
-  //Loading into shared memory
-  for (int ii=0;ii<num_iteration;ii++){
-    if (ii * TILE_SZ_RATIO + shared_y < k && Col + shared_x < n){
-      Bds[shared_y][shared_x] = B(ii * TILE_SZ_RATIO+shared_y,Col + shared_x);
-      __syncthreads();
-    }  
-  }
-  //Loading into registers
-  int iter = ceil(float(k)/TILE_SZ_RATIO);// % num_iteration;
-  for (jj=0;j<iter;j++){
-    for (int reg=0;reg<TILE_SZ_RATIO;reg++){
-      A_matrix[reg] = A(Row+jj*TILE_SZ_RATIO,reg);//TILE_SZ_RATIO * m + reg);
-  
-  }
-
-}
-  //Calculating outer product
-  for (int M_col=0;M_col<TILE_SZ_RATIO;M_col++){
-     for (int N_col=0;N_col<TILE_SZ_B;N_col++){
-      C_matrix[M_col] += A_matrix[M_col] * Bds[M_col][N_col];
-      
+    if (Row<m && Col+jj<n){
+      C(Row,Col+jj) = C_matrix[jj];
     }
   }
-  __syncthreads();
- //Loading to global memory
- for (int M_col=0;M_col<TILE_SZ_RATIO;M_col++){
-   C(Row,Col+M_col) = C_matrix[M_col];
- }
- __syncthreads();
-*/
+
+  
 }
 
 void basicSgemm(char transa, char transb, int m, int n, int k, float alpha, const float *A, int lda, const float *B, int ldb, float beta, float *C, int ldc)
