@@ -1,6 +1,7 @@
 #include "helper.hpp"
 
-
+#define NUM_BINS 1024
+#define BLOCK_SIZE 512
 /******************************************************************************
  GPU main computation kernels
 *******************************************************************************/
@@ -8,13 +9,33 @@
 __global__ void gpu_normal_kernel(float *in_val, float *in_pos, float *out,
                                   int grid_size, int num_in) {
   //@@ INSERT CODE HERE
+  int outIdx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (outIdx < grid_size){
+    for (int inIdx=0; inIdx<num_in;inIdx++){
+      const float in_val2 = in_val[inIdx] * in_val[inIdx];
+      const float dist = in_pos[inIdx]-(float)outIdx;
+      out[outIdx] += in_val2/(dist * dist);
+    }
+  }
 }
 
 __global__ void gpu_cutoff_kernel(float *in_val, float *in_pos, float *out,
                                   int grid_size, int num_in,
                                   float cutoff2) {
   //@@ INSERT CODE HERE
+  int outIdx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (outIdx < grid_size){
+    for (int inIdx=0; inIdx < num_in; inIdx++){
+      const float in_val2 = in_val[inIdx] * in_val[inIdx];
+      const float dist = in_pos[inIdx]-(float)outIdx;
+      const float dist2 = dist * dist;
+      if (dist <= cutoff2){
+         out[outIdx] += in_val2/(dist2);
+      }
+    }
+  }
 }
+
 
 __global__ void gpu_cutoff_binned_kernel(int *bin_ptrs,
                                          float *in_val_sorted,
@@ -22,6 +43,26 @@ __global__ void gpu_cutoff_binned_kernel(int *bin_ptrs,
                                          int grid_size, float cutoff2) {
 
 //@@ INSERT CODE HERE
+int outIdx = blockIdx.x * blockDim.x + threadIdx.x;
+if (outIdx < grid_size){
+  int outbinIdx = (int)(outIdx/grid_size * NUM_BINS);
+  float bin_size = grid_size/NUM_BINS;  
+  for (int bin_inIdx=0;bin_inIdx<NUM_BINS;bin_inIdx++){
+     float Bin_dist = (bin_inIdx-outbinIdx)*bin_size;
+     //float Bin_dist = (bin_ptrs[outbinIdx]-bin_ptrs[bin_inIdx]);
+     if (Bin_dist<cutoff2){
+       for (int val_index = bin_ptrs[bin_inIdx];val_index<bin_ptrs[bin_inIdx+1];val_index++){
+         const float dist = in_pos_sorted[val_index] - (float)outIdx;
+         const float dist2 = dist * dist;
+         const float in_val2 = in_val_sorted[val_index] * in_val_sorted[val_index];
+         if (dist <= cutoff2){
+
+           out[outIdx]+=in_val2/dist2;
+         }
+       }
+     }
+    }
+  }  
 }
 
 /******************************************************************************
@@ -76,18 +117,74 @@ __global__ void histogram(float *in_pos, int *bin_counts, int num_in,
                           int grid_size) {
 
   //@@ INSERT CODE HERE
+  int hIdx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (hIdx < NUM_BINS){
+    bin_counts[hIdx] = 0;  
+  }
+  
+  int Idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (Idx < num_in){
+    int binIdx = (int)(in_pos[Idx]/grid_size * NUM_BINS);
+    atomicAdd(&bin_counts[binIdx],1);
+    //atomicAdd(&bin_counts[(int)(in_pos[Idx]/grid_size) * NUM_BINS],1);
+
+    }
+
 }
 
 __global__ void scan(int *bin_counts, int *bin_ptrs) {
 
   //@@ INSERT CODE HERE
-}
+  __shared__ int scan_array[2*BLOCK_SIZE];
+  int idx = 2*blockIdx.x * BLOCK_SIZE + threadIdx.x;
+  scan_array[threadIdx.x] = idx < NUM_BINS ? bin_counts[idx] : 0;
+  scan_array[threadIdx.x + BLOCK_SIZE] = (idx + BLOCK_SIZE) < NUM_BINS ? bin_counts[idx+BLOCK_SIZE] : 0;
+  //scan_array[threadIdx.x] = bin_counts[idx];
+  //scan_array[threadIdx.x + BLOCK_SIZE] = bin_counts[idx+BLOCK_SIZE];
+  for (int stride = 1; stride<=blockDim.x;stride*=2){
+    __syncthreads();
+    
+    int index = (threadIdx.x+1)*2*stride-1;
+    if (index < 2*BLOCK_SIZE){
+      scan_array[index]+=scan_array[index-stride];
+
+    }
+
+  }
+  for (int stride=2*blockDim.x/4;stride>0;stride/=2){
+     __syncthreads();
+
+    int index = (threadIdx.x + 1)*2*stride - 1;
+
+    if (index + stride < 2 * BLOCK_SIZE) {
+      scan_array[index + stride] += scan_array[index];
+    }
+  }
+  __syncthreads();
+  if (idx < NUM_BINS){
+  bin_ptrs[idx+1] = scan_array[threadIdx.x];
+  }
+  if (idx + BLOCK_SIZE < NUM_BINS){
+  bin_ptrs[idx + BLOCK_SIZE+1] = scan_array[threadIdx.x+BLOCK_SIZE]; 
+  }
+  
+  bin_ptrs[0]=0;
+  }
 
 __global__ void sort(float *in_val, float *in_pos, float *in_val_sorted,
                      float *in_pos_sorted, int grid_size, int num_in,
                      int *bin_counts, int *bin_ptrs) {
 
   //@@ INSERT CODE HERE
+  int inIdx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (inIdx < num_in){
+    const int binIdx = (int)((in_pos[inIdx]/grid_size)*NUM_BINS);
+    const int reg = atomicSub(&bin_counts[binIdx],1);
+    const int newIdx = bin_ptrs[binIdx+1] - reg; 
+    in_val_sorted[newIdx] = in_val[inIdx];
+    in_pos_sorted[newIdx] = in_pos[inIdx]; 
+
+  } 
 }
 
 /******************************************************************************
