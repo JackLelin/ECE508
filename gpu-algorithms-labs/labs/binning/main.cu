@@ -29,7 +29,7 @@ __global__ void gpu_cutoff_kernel(float *in_val, float *in_pos, float *out,
       const float in_val2 = in_val[inIdx] * in_val[inIdx];
       const float dist = in_pos[inIdx]-(float)outIdx;
       const float dist2 = dist * dist;
-      if (dist <= cutoff2){
+      if (dist2 <= cutoff2){
          out[outIdx] += in_val2/(dist2);
       }
     }
@@ -49,13 +49,14 @@ if (outIdx < grid_size){
   float bin_size = grid_size/NUM_BINS;  
   for (int bin_inIdx=0;bin_inIdx<NUM_BINS;bin_inIdx++){
      float Bin_dist = (bin_inIdx-outbinIdx)*bin_size;
+     float Bin_dist2 = Bin_dist * Bin_dist;
      //float Bin_dist = (bin_ptrs[outbinIdx]-bin_ptrs[bin_inIdx]);
-     if (Bin_dist<cutoff2){
+     if (Bin_dist2<cutoff2){
        for (int val_index = bin_ptrs[bin_inIdx];val_index<bin_ptrs[bin_inIdx+1];val_index++){
          const float dist = in_pos_sorted[val_index] - (float)outIdx;
          const float dist2 = dist * dist;
          const float in_val2 = in_val_sorted[val_index] * in_val_sorted[val_index];
-         if (dist <= cutoff2){
+         if (dist2 <= cutoff2){
 
            out[outIdx]+=in_val2/dist2;
          }
