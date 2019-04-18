@@ -35,6 +35,33 @@ __device__ void merge_sequential(float* A, int A_len, float* B, int B_len, float
         }
     }
 }
+__device__ void merge_sequential_circular(float* A, int m, float* B, int n, float *C, int A_S_start,int B_S_start){
+int i,j,k=0;
+  while((i<m)&&(j<n)){
+    int i_cir = (A_S_start+i>=TILE_SIZE)?A_S_start+i-TILE_SIZE:A_S_start+i;
+    int j_cir = (B_S_start+i>=TILE_SIZE)?B_S_start+i-TILE_SIZE:B_S_start+i;
+    if (A[i_cir]<=B[j_cir]){
+       C[k++] = A[i_cir];
+       i++;
+    }
+    else{
+      C[k++] = B[j_cir];
+      j++;
+    }
+  }
+  if (i==m){
+    for(;j<n;j++){
+      int j_cir=(B_S_start+j>=TILE_SIZE)?B_S_start+j-TILE_SIZE:B_S_start+j;
+      C[k++] = B[j_cir];
+    }
+  }
+ else{
+  for (;i<m;i++){
+    int i_cir=(A_S_start+i>+TILE_SIZE)?A_S_start+i-TILE_SIZE:A_S_start+i;
+    C[k++] = A[i_cir];
+  }
+ }
+}
 __device__ int co_rank(int k, float *A, int m, float *B, int n){
   int i = k<m?k:m;
   int j = k-i;
@@ -61,6 +88,7 @@ __device__ int co_rank(int k, float *A, int m, float *B, int n){
   }
   return i;
 }
+//__device__ int co_rank_circular()
 /*
  * Basic parallel merge kernel using co-rank function
  * A, A_len - input array A and its length
