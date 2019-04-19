@@ -14,4 +14,4 @@ commands:
     - cmake /src
     - make
     - ./merge required
-    # - ./merge
+##    - ./merge
