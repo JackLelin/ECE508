@@ -3,7 +3,26 @@
 #include <stdio.h>
 
 #include "template.hu"
+__device__ void child_tc(size_t NumSrcEdge,size_t NumDstEdge,
+                        //const uint32_t *const edgeSrc,
+                        const uint32_t *const edgeDst,
+                        uint64_t num_triangle
+                        //const uint32_T *const rowPtr,
+                        //const size_t numEdges
+  ){
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = 0;
+    if (idx < NumSrcEdge){
+      while (j < NumDstEdge){
 
+//while (i < NumSrcEdge && j <  NumDstEdge){
+        if (edgeDst[idx] == edgeDst[j]){
+          j += 1;
+          num_triangle += 1;
+        }
+    }
+  }
+}
 __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per-edge triangle counts
                                  const uint32_t *const edgeSrc,         //!< node ids for edge srcs
                                  const uint32_t *const edgeDst,         //!< node ids for edge dsts
@@ -46,26 +65,7 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
 }
 
 
-__device__ void child_tc(size_t NumSrcEdge,size_t NumDstEdge,
-                        //const uint32_t *const edgeSrc,
-                        const uint32_t *const edgeDst,
-                        uint64_t num_triangle
-                        //const uint32_T *const rowPtr,
-                        //const size_t numEdges
-  ){
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = 0;
-    if (idx < NumSrcEdge){
-      while (j < NumDstEdge){
 
-//while (i < NumSrcEdge && j <  NumDstEdge){
-        if (edgeDst[idx] == edgeDst[j]){
-          j += 1;
-          num_triangle += 1;
-        }
-    }
-  }
-}
 
 /*    while (src < src_end && dest < dest_end){  //u_ptr<u_end && v_ptr<v_end
       if (w1 < w2){
