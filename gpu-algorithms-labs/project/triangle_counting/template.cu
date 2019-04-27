@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "template.hu"
-__device__ void child_tc(size_t NumSrcEdge,size_t NumDstEdge,
+__global__ void child_tc(size_t NumSrcEdge,size_t NumDstEdge,
                         //const uint32_t *const edgeSrc,
                         const uint32_t *const edgeDst,
                         uint64_t num_triangle
