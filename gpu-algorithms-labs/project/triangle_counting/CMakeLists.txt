@@ -1,5 +1,5 @@
 include(cmake/HunterGate.cmake)
-
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -arch=sm_35 -gencode arch=compute_35,code=sm_35 -rdc=true -lcudadevrt")
 # use config in cmake/Hunter/config.cmake
 HunterGate(
   URL "https://github.com/ruslo/hunter/archive/v0.23.112.tar.gz"
