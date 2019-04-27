@@ -3,32 +3,37 @@
 #include <stdio.h>
 
 #include "template.hu"
-__global__ void child_tc(size_t NumSrcEdge,size_t NumDstEdge,
-                        //const uint32_t *const edgeSrc,
-                        const uint32_t *const edgeDst,
-                        uint64_t num_triangle
-                        //const uint32_T *const rowPtr,
-                        //const size_t numEdges
-  ){
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = 0;
-    if (idx < NumSrcEdge){
-      while (j < NumDstEdge){
 
-//while (i < NumSrcEdge && j <  NumDstEdge){
-        if (edgeDst[idx] == edgeDst[j]){
-          j += 1;
-          num_triangle += 1;
-        }
+
+__global__ void child_tc(int* num_triangle,
+                        const uint32_t *const edgeDst,
+                        const uint32_t srcStart,
+                        const uint32_t dstStart,
+                        uint32_t num_Src,
+                        uint32_t num_Dst)
+
+
+{
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < num_Src)
+  {
+    int temp = 0;
+    for (int j = 0; j < num_Dst; j ++)
+    {
+      if (edgeDst[idx + srcStart] == edgeDst[dstStart + j])
+        temp ++;
     }
+    atomicAdd(num_triangle,temp);
   }
 }
-__global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per-edge triangle counts
+
+__global__ void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per-edge triangle counts
                                  const uint32_t *const edgeSrc,         //!< node ids for edge srcs
                                  const uint32_t *const edgeDst,         //!< node ids for edge dsts
                                  const uint32_t *const rowPtr,          //!< source node offsets in edgeDst
                                  const size_t numEdges                  //!< how many edges to count triangles for
-) {
+) 
+{
 
   // Determine the source and destination node for the edge
 
@@ -36,55 +41,38 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
 
   // Determine how many elements of those two arrays are common
   int tid = threadIdx.x + blockIdx.x * blockDim.x;
-  if (tid < numEdges){
-    uint32_t src_node = edgeSrc[tid];//u
-
+  if (tid < numEdges)
+  {
+    int src_node = edgeSrc[tid];//u
     int dst_node = edgeDst[tid];//v
-    int src = rowPtr[src_node];//u_ptr->P[u]
-    int dst = rowPtr[dst_node];//v_ptr->P[v]
+
+    int src_start = rowPtr[src_node];//u_ptr->P[u]
+    int dst_start = rowPtr[dst_node];//v_ptr->P[v]
     int src_end = rowPtr[src_node+1];//u_end->P[u+1]
     int dst_end = rowPtr[dst_node+1];//v_end->P[v+1]
-    int w1 = edgeDst[src], w2 = edgeDst[dst];//w1->Zd[u_ptr] w2->Zd[v_ptr]
-    uint64_t num_triangle = 0;
+    // int w1 = edgeDst[src], w2 = edgeDst[dst];//w1->Zd[u_ptr] w2->Zd[v_ptr]
+    int* num_triangle;
 
-    size_t src_start = src;
-    //size_t src_end = src_end;
-    size_t dst_start = dst;
-    //size_t dst_end = dst_end;
-    size_t NumSrcEdge = src_start - src_end;
-    size_t NumDstEdge = dst_start - dst_end;
+    size_t NumSrcEdge = src_end - src_start;
+    size_t NumDstEdge = dst_end - dst_start;
 
     dim3 dimBlock(32,1,1);
-    dim3 dimGrid (ceil(float(NumSrcEdge)/32),1,1);
+    dim3 dimGrid ((NumSrcEdge-1)/32+1,1,1);
+
+    cudaMalloc((void**)&num_triangle, sizeof(int));
+
+    *num_triangle = 0;
     //cudaMalloc((void**)&reg)
-    child_tc<<<dimBlock,dimGrid>>>(NumSrcEdge,NumDstEdge,edgeDst,num_triangle);
+    child_tc<<<dimBlock,dimGrid>>>(num_triangle,edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
+    cudaDeviceSynchronize();
     __syncthreads();
 
-    triangleCounts[tid] = num_triangle;
+    triangleCounts[tid] = *num_triangle;
+
+    cudaFree(num_triangle);
   }
 }
 
-
-
-
-/*    while (src < src_end && dest < dest_end){  //u_ptr<u_end && v_ptr<v_end
-      if (w1 < w2){
-        w1 = edgeDst[++src];//w1<-Zd[++u_ptr]
-      }
-      else if (w1 > w2){
-        w2 = edgeDst[++dest];
-      }
-      else {
-        w1 = edgeDst[++src];
-        w2 = edgeDst[++dest];
-        num_triangle += 1;
-        //triangleCounts[tid] ++;
-      }
-    }
-    triangleCounts[tid] = num_triangle;
-
-  }
-}*/
 
 uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode) {
   if (mode == 1) {
