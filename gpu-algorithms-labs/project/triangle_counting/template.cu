@@ -5,7 +5,7 @@
 #include "template.hu"
 
 
-__global__ void child_tc(int* num_triangle,
+__global__ void child_tc(uint64_t* num_triangle,
                         const uint32_t *const edgeDst,
                         const uint32_t srcStart,
                         const uint32_t dstStart,
@@ -15,20 +15,19 @@ __global__ void child_tc(int* num_triangle,
 
 {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  // if (idx < num_Src)
-  // {
-  //   int temp = 0;
-  //   for (int j = 0; j < num_Dst; j ++)
-  //   {
-  //     if (edgeDst[idx + srcStart] == edgeDst[dstStart + j])
-  //       temp ++;
-  //   }
-  //   atomicAdd(num_triangle,temp);
-  // }
+  if (idx < num_Src)
+  {
+    for (int j = 0; j < num_Dst; j ++)
+    {
+        if (edgeDst[idx + srcStart] == edgeDst[dstStart + j])
+            atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
+    }
+    
+  }
 }
 
 
-#define BLOCK_SIZE 512
+#define BLOCK_SIZE 1024
 
 __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per-edge triangle counts
                                  const uint32_t *const edgeSrc,         //!< node ids for edge srcs
@@ -48,16 +47,14 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
         int NumSrcEdge = src_end - src_start;
         int NumDstEdge = dst_end - dst_start;
 
-        int* num_triangle;
-        cudaMalloc((void**)&num_triangle, sizeof(int));
+        triangleCounts[idx] = 0; 
+        cudaStream_t s;
+        cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
 
-        child_tc <<<32,(NumSrcEdge-1)/32+1>>> (num_triangle,edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
+        child_tc <<<256,(NumSrcEdge-1)/256+1,0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
 
         cudaDeviceSynchronize();
         __syncthreads();
-
-        triangleCounts[idx] = *num_triangle;
-        cudaFree(num_triangle);
     }
 
   // Determine the source and destination node for the edge
@@ -66,6 +63,9 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
 }
 
 __global__ void recursive_k(int depth) {
+    int * a;
+    cudaMalloc((void**)&a, sizeof(int));
+    *a = 1;
   // up to depth 6
   if(depth == 6)
     return;
