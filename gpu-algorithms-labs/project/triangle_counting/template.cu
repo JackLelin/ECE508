@@ -45,21 +45,19 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
         int dst_start = rowPtr[edgeDst[idx]]; // col start ptr
         int dst_end = rowPtr[edgeDst[idx]+1];
 
-    int NumSrcEdge = src_end - src_start;
-    int NumDstEdge = dst_end - dst_start;
+        int NumSrcEdge = src_end - src_start;
+        int NumDstEdge = dst_end - dst_start;
 
-    int* num_triangle;
-    // cudaMalloc((void**)&num_triangle, iszeof(int));
-    // *num_triangle = 0;
+        int* num_triangle;
+        cudaMalloc((void**)&num_triangle, sizeof(int));
 
-      // child_tc <<<(NumSrcEdge-1)/32+1,32>>> (num_triangle,edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
+        child_tc <<<32,(NumSrcEdge-1)/32+1>>> (num_triangle,edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
 
-      // cudaDeviceSynchronize();
-      // __syncthreads();
+        cudaDeviceSynchronize();
+        __syncthreads();
 
-      // triangleCounts[idx] = *num_triangle;
-
-      // cudaFree(num_triangle);
+        triangleCounts[idx] = *num_triangle;
+        cudaFree(num_triangle);
     }
 
   // Determine the source and destination node for the edge
@@ -121,8 +119,8 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
     dim3 dimGrid ( ceil(((float)view.nnz()) / BLOCK_SIZE ));
     
     // launch from host
-  recursive_k <<< 1, 1 >>> (0);
-  printf("============================================================================recursive_k\n");
+    // recursive_k <<< 1, 1 >>> (0);
+    // printf("============================================================================recursive_k\n");
 
     kernel_tc <<<dimGrid, dimBlock>>> (tri_nums.data(),  //!< per-edge triangle counts
                                  view.row_ind(),         //!< node ids for edge srcs
