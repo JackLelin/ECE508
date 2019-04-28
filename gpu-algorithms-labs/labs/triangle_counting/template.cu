@@ -76,11 +76,11 @@ __global__ static void kernel_tc_binary_search(uint64_t *__restrict__ triangleCo
       int high = (dst_end-dst)-1;
       while (high >= low){
         middle = (low+high)/2;
-        if (edgeDst[middle]==edgeDst[i]){
+        if (edgeDst[dst+middle]==edgeDst[i]){
           num_triangle += 1;
           break;
         }
-        else if(edgeDst[middle] < edgeDst[i]){
+        else if(edgeDst[dst+middle] < edgeDst[i]){
           low = middle + 1;
         }
         else{
