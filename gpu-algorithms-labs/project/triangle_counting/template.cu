@@ -55,28 +55,35 @@ __global__ void child_tc(uint64_t* num_triangle,
   int i_temp = co_rank(k_temp,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
   int j_curr = k_curr - i_curr;
   int j_next = k_next - i_next;
-  //int j_temp = k_temp - i_temp;
+  int j_temp = k_temp - i_temp;
   if (i_next-i_curr != 0 && j_next-j_curr !=0){
-    if(edgeDst[i_next-1]==edgeDst[j_curr-1]){
+    /*if(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_curr-1]){
+      atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
+    }*/
+    int w1 = edgeDst[i_curr+srcStart], w2 = edgeDst[j_curr+dstStart];
+    while (i_curr<i_next && j_curr<j_next){
+      if (w1<w2){
+        i_curr += 1;
+        w1 = edgeDst[srcStart+i_curr];
+      }
+      else if (w1>w2){
+        j_curr += 1;
+        w2 = edgeDst[dstStart+j_curr];
+      }
+      else{
+        i_curr +=1;
+        j_curr +=1;
+        w1 = edgeDst[srcStart+i_curr];
+        w2 = edgeDst[dstStart+j_curr];
+        atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
+      }
+    }
+  }
+  else if (j_next-j_curr==0 && i_temp-i_next ==0){
+    if(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_next]){
       atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
     }
   }
-  if (j_next-j_curr==0 && i_temp-i_next ==0){
-    if(edgeDst[i_temp-1]==edgeDst[j_next]){
-      atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
-    }
-  }
-
- /* int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < num_Src)
-  {
-    for (int j = 0; j < num_Dst; j ++)
-    {
-        if (edgeDst[idx + srcStart] == edgeDst[dstStart + j])
-            atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
-    }
-
-  }*/
 }
 
 
@@ -104,7 +111,7 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
         cudaStream_t s;
         cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
 
-        child_tc <<<256,(NumSrcEdge-1)/256+1,0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
+        child_tc <<<256,(NumSrcEdge+NumDstEdge-1)/256+1,0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
 
         cudaDeviceSynchronize();
         __syncthreads();
