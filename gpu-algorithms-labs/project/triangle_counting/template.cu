@@ -57,7 +57,8 @@ __global__ void child_tc(uint64_t* num_triangle,
                         const uint32_t srcStart,
                         const uint32_t dstStart,
                         uint32_t num_Src,
-                        uint32_t num_Dst)
+                        uint32_t num_Dst,
+                        uint32_t *C)
 
 
 {
@@ -104,7 +105,6 @@ __global__ void child_tc(uint64_t* num_triangle,
     }
   }*/
   int tid = blockDim.x * blockIdx.x + threadIdx.x;
-  static uint32_t C[num_Dst+num_Src];
   int k_curr = tid * ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x);
   int k_next = min((tid+1)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);
   int i_curr = co_rank(k_curr,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
@@ -112,11 +112,11 @@ __global__ void child_tc(uint64_t* num_triangle,
   int j_curr = k_curr - i_curr;
   int j_next = k_next - i_next;
   merge_sequential(&edgeDst[srcStart+i_curr],i_next-i_curr,&edgeDst[dstStart+j_curr],j_next-j_curr,&C[k_curr]);
-  for (int i=0;i<num_Dst+num_Src-1;i++){
-    if (C[i]==C[i+1]){
-      atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
-    }
-  }
+  //for (int i=0;i<num_Dst+num_Src-1;i++){
+  //  if (C[i]==C[i+1]){
+  //    atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
+  //  }
+  //}
 
 }
 
@@ -140,12 +140,13 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
 
         int NumSrcEdge = src_end - src_start;
         int NumDstEdge = dst_end - dst_start;
-
+        
+        uint32_t *C;
         triangleCounts[idx] = 0;
+        cudaMalloc((void **)&C,sizeof(uint32_t)*(NumSrcEdge+NumDstEdge));       
         cudaStream_t s;
         cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
-
-        child_tc <<<256,(NumSrcEdge+NumDstEdge-1)/256+1,0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
+        child_tc <<<256,(NumSrcEdge+NumDstEdge-1)/256+1,0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge,C);
 
         cudaDeviceSynchronize();
         __syncthreads();
