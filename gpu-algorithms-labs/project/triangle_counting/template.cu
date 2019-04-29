@@ -7,6 +7,23 @@
 __host__ __device__ static inline int ceil_div(int x, int y) {
     return (x - 1) / y + 1;
 }
+__device__ void merge_sequential(const uint32_t* A, int A_len, const uint32_t* B, int B_len, uint32_t* C) {
+    int i = 0, j = 0, k = 0;
+
+    while ((i < A_len) && (j < B_len)) {
+        C[k++] = A[i] <= B[j] ? A[i++] : B[j++];
+    }
+
+    if (i == A_len) {
+        while (j < B_len) {
+            C[k++] = B[j++];
+        }
+    } else {
+        while (i < A_len) {
+            C[k++] = A[i++];
+        }
+    }
+}
 
 __device__ int co_rank(int k,const uint32_t *A, int m,const uint32_t *B, int n){
   int i = k<m?k:m;
@@ -44,10 +61,11 @@ __global__ void child_tc(uint64_t* num_triangle,
 
 
 {
+  /*
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   //int k_curr = tid * ceil_div(A_len+B_len,blockDim.x * gridDim.x);
   int k_curr = tid * ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x);
-  int k_next = min((tid+1)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);  
+  int k_next = min((tid+1)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);
   int k_temp = min((tid+2)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);//((num_Dst+num_Src-1)/(blockDim.x*gridDim.x)+1),num_Dst+num_Src);
 
   int i_curr = co_rank(k_curr,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
@@ -56,11 +74,12 @@ __global__ void child_tc(uint64_t* num_triangle,
   int j_curr = k_curr - i_curr;
   int j_next = k_next - i_next;
   int j_temp = k_temp - i_temp;
-  if (i_next-i_curr != 0 && j_next-j_curr !=0){
+  if (i_next-i_curr != 0 && j_next-j_curr !=0){*/
     /*if(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_curr-1]){
       atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
     }*/
-    int w1 = edgeDst[i_curr+srcStart], w2 = edgeDst[j_curr+dstStart];
+
+    /*int w1 = edgeDst[i_curr+srcStart], w2 = edgeDst[j_curr+dstStart];
     while (i_curr<i_next && j_curr<j_next){
       if (w1<w2){
         i_curr += 1;
@@ -83,7 +102,22 @@ __global__ void child_tc(uint64_t* num_triangle,
     if(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_next]){
       atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
     }
+  }*/
+  int tid = blockDim.x * blockIdx.x + threadIdx.x;
+  static uint32_t C[num_Dst+num_Src];
+  int k_curr = tid * ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x);
+  int k_next = min((tid+1)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);
+  int i_curr = co_rank(k_curr,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
+  int i_next = co_rank(k_next,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
+  int j_curr = k_curr - i_curr;
+  int j_next = k_next - i_next;
+  merge_sequential(&edgeDst[srcStart+i_curr],i_next-i_curr,&edgeDst[dstStart+j_curr],j_next-j_curr,&C[k_curr]);
+  for (int i=0;i<num_Dst+num_Src-1;i++){
+    if (C[i]==C[i+1]){
+      atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
+    }
   }
+
 }
 
 
