@@ -19,30 +19,7 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
   int tid = threadIdx.x + blockIdx.x * blockDim.x;
   if (tid < numEdges){
     uint32_t src_node = edgeSrc[tid];//u
-/*
-    int u = edgeSrc[tid];
-    int v = edgeDst[tid];
-    int u_ptr = rowPtr[u],v_ptr = rowPtr[v];
-    int u_end = rowPtr[u+1],v_end = rowPtr[v+1];
-    int w1 = edgeDst[u_ptr],w2 = edgeDst[v_ptr];
-    while (u_ptr<u_end && v_ptr<v_end){
-    if (w1<w2){
-    w1 = edgeDst[++u_ptr];
-}
-    else if (w1>w2){
-    w2 = edgeDst[++v_ptr];
-    }
-    else{
-    w1 = edgeDst[++u_ptr];
-    w2 = edgeDst[++v_ptr];
-    triangleCounts[tid] ++;
-    }
-
-
-}
-}
-}
-*/
+    
     int dest_node = edgeDst[tid];//v
     int src = rowPtr[src_node];//u_ptr->P[u]
     int dest = rowPtr[dest_node];//v_ptr->P[v]
