@@ -3,88 +3,158 @@
 #include <stdio.h>
 
 #include "template.hu"
-__global__ void child_tc(size_t NumSrcEdge,size_t NumDstEdge,
-                        //const uint32_t *const edgeSrc,
-                        const uint32_t *const edgeDst,
-                        uint64_t num_triangle
-                        //const uint32_T *const rowPtr,
-                        //const size_t numEdges
-  ){
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = 0;
-    if (idx < NumSrcEdge){
-      while (j < NumDstEdge){
 
-//while (i < NumSrcEdge && j <  NumDstEdge){
-        if (edgeDst[idx] == edgeDst[j]){
-          j += 1;
-          num_triangle += 1;
-        }
+__host__ __device__ static inline int ceil_div(int x, int y) {
+    return (x - 1) / y + 1;
+}
+
+__device__ int co_rank(int k,const uint32_t *A, int m,const uint32_t *B, int n){
+  int i = k<m?k:m;
+  int j = k-i;
+  int i_low = 0>(k-n)?0:k-n;
+  int j_low = 0>(k-m)?0:k-m;
+  int delta;
+  bool active = true;
+  while (active){
+    if (i>0&&j<n&&A[i-1]>B[j]){
+      delta = ((i-i_low+1)>>1);//delta = ceil_div(i-i_low,2);
+      j_low = j;
+      j = j + delta;
+      i = i - delta;
+    }
+    else if (j>0 && i<m && B[j-1]>=A[i]){
+      delta = ((j-j_low+1)>>1);// delta = ceil_div(j-j_low,2);
+      i_low = i;
+      i = i + delta;
+      j = j - delta;
+    }
+    else{
+      active = false;
     }
   }
+  return i;
 }
+
+__global__ void child_tc(uint64_t* num_triangle,
+                        const uint32_t *const edgeDst,
+                        const uint32_t srcStart,
+                        const uint32_t dstStart,
+                        uint32_t num_Src,
+                        uint32_t num_Dst)
+
+
+{
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  //int k_curr = tid * ceil_div(A_len+B_len,blockDim.x * gridDim.x);
+  int k_curr = tid * ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x);
+  int k_next = min((tid+1)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);  
+  int k_temp = min((tid+2)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);//((num_Dst+num_Src-1)/(blockDim.x*gridDim.x)+1),num_Dst+num_Src);
+
+  int i_curr = co_rank(k_curr,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
+  int i_next = co_rank(k_next,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
+  int i_temp = co_rank(k_temp,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
+  int j_curr = k_curr - i_curr;
+  int j_next = k_next - i_next;
+  //int j_temp = k_temp - i_temp;
+  if (i_next-i_curr != 0 && j_next-j_curr !=0){
+    if(edgeDst[i_next-1]==edgeDst[j_curr-1]){
+      atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
+    }
+  }
+  if (j_next-j_curr==0 && i_temp-i_next ==0){
+    if(edgeDst[i_temp-1]==edgeDst[j_next]){
+      atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
+    }
+  }
+
+ /* int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < num_Src)
+  {
+    for (int j = 0; j < num_Dst; j ++)
+    {
+        if (edgeDst[idx + srcStart] == edgeDst[dstStart + j])
+            atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
+    }
+
+  }*/
+}
+
+
+#define BLOCK_SIZE 1024
+
 __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per-edge triangle counts
                                  const uint32_t *const edgeSrc,         //!< node ids for edge srcs
                                  const uint32_t *const edgeDst,         //!< node ids for edge dsts
                                  const uint32_t *const rowPtr,          //!< source node offsets in edgeDst
                                  const size_t numEdges                  //!< how many edges to count triangles for
-) {
+)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if(idx < numEdges)
+    {
+        int src_start = rowPtr[edgeSrc[idx]]; // row start ptr
+        int src_end = rowPtr[edgeSrc[idx] + 1];
+        int dst_start = rowPtr[edgeDst[idx]]; // col start ptr
+        int dst_end = rowPtr[edgeDst[idx]+1];
+
+        int NumSrcEdge = src_end - src_start;
+        int NumDstEdge = dst_end - dst_start;
+
+        triangleCounts[idx] = 0;
+        cudaStream_t s;
+        cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
+
+        child_tc <<<256,(NumSrcEdge-1)/256+1,0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
+
+        cudaDeviceSynchronize();
+        __syncthreads();
+    }
 
   // Determine the source and destination node for the edge
-
   // Use the row pointer array to determine the start and end of the neighbor list in the column index array
-
   // Determine how many elements of those two arrays are common
-  int tid = threadIdx.x + blockIdx.x * blockDim.x;
-  if (tid < numEdges){
-    uint32_t src_node = edgeSrc[tid];//u
+}
 
-    int dst_node = edgeDst[tid];//v
-    int src = rowPtr[src_node];//u_ptr->P[u]
-    int dst = rowPtr[dst_node];//v_ptr->P[v]
-    int src_end = rowPtr[src_node+1];//u_end->P[u+1]
-    int dst_end = rowPtr[dst_node+1];//v_end->P[v+1]
-    int w1 = edgeDst[src], w2 = edgeDst[dst];//w1->Zd[u_ptr] w2->Zd[v_ptr]
-    uint64_t num_triangle = 0;
-
-    size_t src_start = src;
-    //size_t src_end = src_end;
-    size_t dst_start = dst;
-    //size_t dst_end = dst_end;
-    size_t NumSrcEdge = src_start - src_end;
-    size_t NumDstEdge = dst_start - dst_end;
-
-    dim3 dimBlock(32,1,1);
-    dim3 dimGrid (ceil(float(NumSrcEdge)/32),1,1);
-    //cudaMalloc((void**)&reg)
-    child_tc<<<dimBlock,dimGrid>>>(NumSrcEdge,NumDstEdge,edgeDst,num_triangle);
-    __syncthreads();
-
-    triangleCounts[tid] = num_triangle;
+__global__ void recursive_k(int depth) {
+    int * a;
+    cudaMalloc((void**)&a, sizeof(int));
+    *a = 1;
+  // up to depth 6
+  if(depth == 6)
+    return;
+  // launch 1 kernel (2 if depth == 3)
+  if(threadIdx.x == 0) {
+    recursive_k <<< 1, 1 >>> (depth + 1);
+    if(depth == 3) {
+      cudaDeviceSynchronize();
+      recursive_k <<< 1, 1 >>> (depth + 1);
+    }
   }
 }
 
+__global__ void reduct(uint64_t *input, int len) {
 
+  __shared__ uint64_t temp[BLOCK_SIZE];
+  int id = blockIdx.x * BLOCK_SIZE * 2 + threadIdx.x;
+  temp[threadIdx.x] = id < len ? input[id] : 0;
+  temp[threadIdx.x] += (id + BLOCK_SIZE)<len ? input[id + BLOCK_SIZE] : 0;
 
-
-/*    while (src < src_end && dest < dest_end){  //u_ptr<u_end && v_ptr<v_end
-      if (w1 < w2){
-        w1 = edgeDst[++src];//w1<-Zd[++u_ptr]
-      }
-      else if (w1 > w2){
-        w2 = edgeDst[++dest];
-      }
-      else {
-        w1 = edgeDst[++src];
-        w2 = edgeDst[++dest];
-        num_triangle += 1;
-        //triangleCounts[tid] ++;
-      }
+  int space = BLOCK_SIZE>>1;
+  __syncthreads();
+  while (space)
+  {
+    if (threadIdx.x < space)
+    {
+      temp[threadIdx.x] += temp[threadIdx.x + space];
     }
-    triangleCounts[tid] = num_triangle;
-
+    space = space >> 1;
+    __syncthreads();
   }
-}*/
+  // atomicAdd((unsigned long long int*)(&(input[len])),(unsigned long long int)*temp) ;
+  if (threadIdx.x == 0)
+    atomicAdd((unsigned long long int*)&(input[len]),(unsigned long long int)temp[0]);
+}
+
 
 uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode) {
   if (mode == 1) {
@@ -94,20 +164,30 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
     //@@ create a pangolin::Vector (uint64_t) to hold per-edge triangle counts
     // Pangolin is backed by CUDA so you do not need to explicitly copy data between host and device.
     // You may find pangolin::Vector::data() function useful to get a pointer for your kernel to use.
-    //@@ launch the linear search kernel here
-    pangolin::Vector <uint64_t> edge_array (view.nnz(),0);
-    dim3 dimBlock(512);
-    dim3 dimGrid(ceil(float(view.nnz())/512),1,1);
-    //pangolin::Vector<uint64_t>edge_array = pangolin::Vector<uint64_t>(view.nnz()) ;
+    pangolin::Vector<uint64_t>tri_nums = pangolin::Vector<uint64_t>(view.nnz()+1) ;
 
-    kernel_tc <<<dimGrid,dimBlock>>>(edge_array.data(), view.row_ind(),view.col_ind(),view.row_ptr(),view.nnz());
+    tri_nums[view.nnz()] = 0;
+    //@@ launch the linear search kernel here
+    dim3 dimBlock(BLOCK_SIZE);
+    dim3 dimGrid ( ceil(((float)view.nnz()) / BLOCK_SIZE ));
+
+    // launch from host
+    // recursive_k <<< 1, 1 >>> (0);
+    // printf("============================================================================recursive_k\n");
+
+    kernel_tc <<<dimGrid, dimBlock>>> (tri_nums.data(),  //!< per-edge triangle counts
+                                 view.row_ind(),         //!< node ids for edge srcs
+                                 view.col_ind(),         //!< node ids for edge dsts
+                                 view.row_ptr(),          //!< source node offsets in edgeDst
+                                 view.nnz());                  //!< how many edges to count triangles for
+
     cudaDeviceSynchronize();
-    uint64_t total = 0;
-    //@@ do a global reduction (on CPU or GPU) to produce the final triangle count
-    for (int i = 0; i< view.nnz(); i++){
-      //total += triangle_Counts.data()[i];
-      total += edge_array[i];
-    }
+
+    dim3 dimGrid2 ( ceil(((float)view.nnz()) / (BLOCK_SIZE*2) ));
+    reduct <<<dimGrid2, dimBlock>>>(tri_nums.data(), view.nnz());
+    cudaDeviceSynchronize();
+    uint64_t total = (tri_nums.data())[view.nnz()] ;
+
     return total;
 
   } else if (2 == mode) {
