@@ -7,6 +7,7 @@
 __host__ __device__ static inline int ceil_div(int x, int y) {
     return (x - 1) / y + 1;
 }
+
 __device__ void merge_sequential(const uint32_t* A, int A_len, const uint32_t* B, int B_len, uint32_t* C) {
     int i = 0, j = 0, k = 0;
 
@@ -57,14 +58,12 @@ __global__ void child_tc(uint64_t* num_triangle,
                         const uint32_t srcStart,
                         const uint32_t dstStart,
                         uint32_t num_Src,
-                        uint32_t num_Dst,
-                        uint32_t *C)
+                        uint32_t num_Dst)
 
 
 {
-  /*
+  
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  //int k_curr = tid * ceil_div(A_len+B_len,blockDim.x * gridDim.x);
   int k_curr = tid * ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x);
   int k_next = min((tid+1)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);
   int k_temp = min((tid+2)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);//((num_Dst+num_Src-1)/(blockDim.x*gridDim.x)+1),num_Dst+num_Src);
@@ -74,13 +73,17 @@ __global__ void child_tc(uint64_t* num_triangle,
   int i_temp = co_rank(k_temp,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
   int j_curr = k_curr - i_curr;
   int j_next = k_next - i_next;
-  int j_temp = k_temp - i_temp;
-  if (i_next-i_curr != 0 && j_next-j_curr !=0){*/
-    /*if(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_curr-1]){
+  //int j_temp = k_temp - i_temp;
+  //if (i_next-i_curr != 0 && j_next-j_curr !=0){
+    
+  if (edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_curr]){//||(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_])
       atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
-    }*/
+  }
 
-    /*int w1 = edgeDst[i_curr+srcStart], w2 = edgeDst[j_curr+dstStart];
+
+
+/*
+    int w1 = edgeDst[i_curr+srcStart], w2 = edgeDst[j_curr+dstStart];
     while (i_curr<i_next && j_curr<j_next){
       if (w1<w2){
         i_curr += 1;
@@ -98,28 +101,18 @@ __global__ void child_tc(uint64_t* num_triangle,
         atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
       }
     }
+    __syncthreads();*/
+    /*if (edgeDst[srcStart+i_next]==edgeDst[dstStart+j_curr-1]){
+     atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
+    }
   }
   else if (j_next-j_curr==0 && i_temp-i_next ==0){
     if(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_next]){
       atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
     }
-  }*/
-  int tid = blockDim.x * blockIdx.x + threadIdx.x;
-  int k_curr = tid * ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x);
-  int k_next = min((tid+1)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);
-  int i_curr = co_rank(k_curr,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
-  int i_next = co_rank(k_next,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
-  int j_curr = k_curr - i_curr;
-  int j_next = k_next - i_next;
-  merge_sequential(&edgeDst[srcStart+i_curr],i_next-i_curr,&edgeDst[dstStart+j_curr],j_next-j_curr,&C[k_curr]);
-  //for (int i=0;i<num_Dst+num_Src-1;i++){
-  //  if (C[i]==C[i+1]){
-  //    atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
-  //  }
-  //}
-
+  }
+  __syncthreads();*/
 }
-
 
 #define BLOCK_SIZE 1024
 
@@ -141,12 +134,10 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
         int NumSrcEdge = src_end - src_start;
         int NumDstEdge = dst_end - dst_start;
         
-        uint32_t *C;
         triangleCounts[idx] = 0;
-        cudaMalloc((void **)&C,sizeof(uint32_t)*(NumSrcEdge+NumDstEdge));       
         cudaStream_t s;
         cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
-        child_tc <<<256,(NumSrcEdge+NumDstEdge-1)/256+1,0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge,C);
+        child_tc <<<256,ceil_div(NumSrcEdge+NumDstEdge,256),0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
 
         cudaDeviceSynchronize();
         __syncthreads();
@@ -200,7 +191,6 @@ __global__ void reduct(uint64_t *input, int len) {
 
 uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode) {
   if (mode == 1) {
-
     // REQUIRED
 
     //@@ create a pangolin::Vector (uint64_t) to hold per-edge triangle counts
@@ -211,7 +201,7 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
     tri_nums[view.nnz()] = 0;
     //@@ launch the linear search kernel here
     dim3 dimBlock(BLOCK_SIZE);
-    dim3 dimGrid ( ceil(((float)view.nnz()) / BLOCK_SIZE ));
+    dim3 dimGrid (ceil(((float)view.nnz()) / BLOCK_SIZE ));
 
     // launch from host
     // recursive_k <<< 1, 1 >>> (0);
