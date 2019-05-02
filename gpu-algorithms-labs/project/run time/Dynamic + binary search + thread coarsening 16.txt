@@ -1,0 +1,51 @@
+Dynamic + binary search + thread coarsening 16
+
+✱ Running ./tc -c LINEAR
+TIMER:: Reading graph data took 125.516640ms
+TIMER:: building unified memory CSR took 132.439270ms
+TIMER:: counting triangles took 323055.343750ms
+[2019-04-28 22:03:04.005] [pangolin] [debug] CUDA Triangle Counter, sizeof(Int) = 4
+[2019-04-28 22:03:04.005] [pangolin] [info] Initializing CUDA device 0
+[2019-04-28 22:03:04.007] [pangolin] [debug] IMPACT 2019 TC, sizeof(Int) = 4
+[2019-04-28 22:03:04.007] [pangolin] [info] reading /graphs/graph500-scale18-ef16_adj.bel
+[2019-04-28 22:03:04.007] [pangolin] [debug] creating BELReader
+[2019-04-28 22:03:04.126] [pangolin] [debug] building DAG
+[2019-04-28 22:03:04.126] [pangolin] [debug] smallest node was 1
+[2019-04-28 22:03:04.167] [pangolin] [info] 174147 nodes
+[2019-04-28 22:03:04.167] [pangolin] [info] 3800348 edges
+[2019-04-28 22:03:04.169] [pangolin] [debug] copying to unified memory
+[2019-04-28 22:03:04.178] [pangolin] [debug] 3800348 edges per GPU
+[2019-04-28 22:03:04.178] [pangolin] [debug] GPU 0 edges 0+3800348
+[2019-04-28 22:03:04.178] [pangolin] [debug] linear kernel
+[2019-04-28 22:03:04.178] [pangolin] [debug] kernel dims 14846 x 256
+[2019-04-28 22:03:04.178] [pangolin] [debug] Waiting for GPU 0
+[2019-04-28 22:03:04.222] [pangolin] [debug] GPU reduction
+[2019-04-28 22:03:04.222] [pangolin] [debug] 19455B for cub::DeviceReduce::Sum temp storage
+[2019-04-28 22:03:04.223] [pangolin] [debug] Final reduction 0.000783854s
+TIMER:: comparing result took 217.747650ms
+TIMER:: Reading graph data took 29.025984ms
+TIMER:: building unified memory CSR took 40.449280ms
+TIMER:: counting triangles took 320944.125000ms
+[2019-04-28 22:08:25.248] [pangolin] [debug] CUDA Triangle Counter, sizeof(Int) = 4
+[2019-04-28 22:08:25.248] [pangolin] [info] Initializing CUDA device 0
+[2019-04-28 22:08:25.248] [pangolin] [debug] IMPACT 2019 TC, sizeof(Int) = 4
+[2019-04-28 22:08:25.248] [pangolin] [info] reading /graphs/amazon0302_adj.bel
+[2019-04-28 22:08:25.248] [pangolin] [debug] creating BELReader
+[2019-04-28 22:08:25.275] [pangolin] [debug] building DAG
+[2019-04-28 22:08:25.275] [pangolin] [debug] smallest node was 1
+[2019-04-28 22:08:25.288] [pangolin] [info] 262111 nodes
+[2019-04-28 22:08:25.288] [pangolin] [info] 899792 edges
+[2019-04-28 22:08:25.288] [pangolin] [debug] copying to unified memory
+[2019-04-28 22:08:25.293] [pangolin] [debug] 899792 edges per GPU
+[2019-04-28 22:08:25.293] [pangolin] [debug] GPU 0 edges 0+899792
+[2019-04-28 22:08:25.293] [pangolin] [debug] linear kernel
+[2019-04-28 22:08:25.293] [pangolin] [debug] kernel dims 3515 x 256
+[2019-04-28 22:08:25.293] [pangolin] [debug] Waiting for GPU 0
+[2019-04-28 22:08:25.295] [pangolin] [debug] GPU reduction
+[2019-04-28 22:08:25.295] [pangolin] [debug] 19455B for cub::DeviceReduce::Sum temp storage
+[2019-04-28 22:08:25.295] [pangolin] [debug] Final reduction 0.000771995s
+TIMER:: comparing result took 47.541248ms
+TIMER:: Reading graph data took 94.167519ms
+TIMER:: building unified memory CSR took 141.357025ms
+✱ The build folder has been uploaded to http://s3.amazonaws.com/files.rai-project.com/userdata/build-5cc621a32caf64002a65cb59.tar.gz. The data will be present for only a short duration of time.
+✱ Server has ended your request.

@@ -1,0 +1,67 @@
+✱ Running ./tc -c LINEAR
+TIMER:: Reading graph data took 122.040451ms
+TIMER:: building unified memory CSR took 131.515167ms
+TIMER:: counting triangles took 72.615356ms
+[2019-04-29 01:11:16.357] [pangolin] [debug] CUDA Triangle Counter, sizeof(Int) = 4
+[2019-04-29 01:11:16.357] [pangolin] [info] Initializing CUDA device 0
+[2019-04-29 01:11:16.359] [pangolin] [debug] IMPACT 2019 TC, sizeof(Int) = 4
+[2019-04-29 01:11:16.359] [pangolin] [info] reading /graphs/graph500-scale18-ef16_adj.bel
+[2019-04-29 01:11:16.359] [pangolin] [debug] creating BELReader
+[2019-04-29 01:11:16.475] [pangolin] [debug] building DAG
+[2019-04-29 01:11:16.475] [pangolin] [debug] smallest node was 1
+[2019-04-29 01:11:16.517] [pangolin] [info] 174147 nodes
+[2019-04-29 01:11:16.517] [pangolin] [info] 3800348 edges
+[2019-04-29 01:11:16.519] [pangolin] [debug] copying to unified memory
+[2019-04-29 01:11:16.530] [pangolin] [debug] 3800348 edges per GPU
+[2019-04-29 01:11:16.530] [pangolin] [debug] GPU 0 edges 0+3800348
+[2019-04-29 01:11:16.530] [pangolin] [debug] linear kernel
+[2019-04-29 01:11:16.530] [pangolin] [debug] kernel dims 14846 x 256
+[2019-04-29 01:11:16.530] [pangolin] [debug] Waiting for GPU 0
+[2019-04-29 01:11:16.579] [pangolin] [debug] GPU reduction
+[2019-04-29 01:11:16.579] [pangolin] [debug] 19455B for cub::DeviceReduce::Sum temp storage
+[2019-04-29 01:11:16.580] [pangolin] [debug] Final reduction 0.000779997s
+TIMER:: comparing result took 223.341415ms
+TIMER:: Reading graph data took 25.170368ms
+TIMER:: building unified memory CSR took 38.339520ms
+TIMER:: counting triangles took 12.836768ms
+[2019-04-29 01:11:16.669] [pangolin] [debug] CUDA Triangle Counter, sizeof(Int) = 4
+[2019-04-29 01:11:16.669] [pangolin] [info] Initializing CUDA device 0
+[2019-04-29 01:11:16.671] [pangolin] [debug] IMPACT 2019 TC, sizeof(Int) = 4
+[2019-04-29 01:11:16.671] [pangolin] [info] reading /graphs/amazon0302_adj.bel
+[2019-04-29 01:11:16.671] [pangolin] [debug] creating BELReader
+[2019-04-29 01:11:16.696] [pangolin] [debug] building DAG
+[2019-04-29 01:11:16.696] [pangolin] [debug] smallest node was 1
+[2019-04-29 01:11:16.709] [pangolin] [info] 262111 nodes
+[2019-04-29 01:11:16.709] [pangolin] [info] 899792 edges
+[2019-04-29 01:11:16.709] [pangolin] [debug] copying to unified memory
+[2019-04-29 01:11:16.713] [pangolin] [debug] 899792 edges per GPU
+[2019-04-29 01:11:16.713] [pangolin] [debug] GPU 0 edges 0+899792
+[2019-04-29 01:11:16.713] [pangolin] [debug] linear kernel
+[2019-04-29 01:11:16.713] [pangolin] [debug] kernel dims 3515 x 256
+[2019-04-29 01:11:16.713] [pangolin] [debug] Waiting for GPU 0
+[2019-04-29 01:11:16.714] [pangolin] [debug] GPU reduction
+[2019-04-29 01:11:16.714] [pangolin] [debug] 19455B for cub::DeviceReduce::Sum temp storage
+[2019-04-29 01:11:16.715] [pangolin] [debug] Final reduction 0.000679439s
+TIMER:: comparing result took 46.106655ms
+TIMER:: Reading graph data took 91.283104ms
+TIMER:: building unified memory CSR took 138.877762ms
+TIMER:: counting triangles took 35.344479ms
+[2019-04-29 01:11:16.984] [pangolin] [debug] CUDA Triangle Counter, sizeof(Int) = 4
+[2019-04-29 01:11:16.984] [pangolin] [info] Initializing CUDA device 0
+[2019-04-29 01:11:16.984] [pangolin] [debug] IMPACT 2019 TC, sizeof(Int) = 4
+[2019-04-29 01:11:16.984] [pangolin] [info] reading /graphs/roadNet-CA_adj.bel
+[2019-04-29 01:11:16.984] [pangolin] [debug] creating BELReader
+[2019-04-29 01:11:17.074] [pangolin] [debug] building DAG
+[2019-04-29 01:11:17.074] [pangolin] [debug] smallest node was 1
+[2019-04-29 01:11:17.125] [pangolin] [info] 1965206 nodes
+[2019-04-29 01:11:17.125] [pangolin] [info] 2766607 edges
+[2019-04-29 01:11:17.126] [pangolin] [debug] copying to unified memory
+[2019-04-29 01:11:17.137] [pangolin] [debug] 2766607 edges per GPU
+[2019-04-29 01:11:17.137] [pangolin] [debug] GPU 0 edges 0+2766607
+[2019-04-29 01:11:17.137] [pangolin] [debug] linear kernel
+[2019-04-29 01:11:17.137] [pangolin] [debug] kernel dims 10808 x 256
+[2019-04-29 01:11:17.137] [pangolin] [debug] Waiting for GPU 0
+[2019-04-29 01:11:17.141] [pangolin] [debug] GPU reduction
+[2019-04-29 01:11:17.141] [pangolin] [debug] 19455B for cub::DeviceReduce::Sum temp storage
+[2019-04-29 01:11:17.141] [pangolin] [debug] Final reduction 0.000751457s
+TIMER:: comparing result took 157.714554ms
