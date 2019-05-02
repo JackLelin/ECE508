@@ -4,6 +4,9 @@
 
 #include "template.hu"
 //merge_sort
+//Dynmaic parallism
+
+
 __host__ __device__ static inline int ceil_div(int x, int y) {
     return (x - 1) / y + 1;
 }
@@ -76,14 +79,13 @@ __global__ void child_tc(uint64_t* num_triangle,
   int j_next = k_next - i_next;
   //int j_temp = k_temp - i_temp;
   if (j_next<num_Dst && i_next<num_Src&&i_next>0){
-  if (edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_next]){//||(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_])
+    if (edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_next]){//||(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_])
       //printf ("edgeDst[srcStart+i_next-1]= %d,edgeDst[dstStart+j_next]=%d,i_next=%d,j_nex=%d,i_next+j_next=%d,srcStart+i_next-1=%d,dstStart+j_next=%d\n",edgeDst[srcStart+i_next-1],edgeDst[dstStart+j_next],i_next,j_next,i_next+j_next,srcStart+i_next-1,dstStart+j_next,edgeDst[99]);
       atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
+    }
   }
-}
 
-
-/*
+  if (j_next-j_curr!=0&&i_next-i_curr!=0){
     int w1 = edgeDst[i_curr+srcStart], w2 = edgeDst[j_curr+dstStart];
     while (i_curr<i_next && j_curr<j_next){
       if (w1<w2){
@@ -102,7 +104,7 @@ __global__ void child_tc(uint64_t* num_triangle,
         atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
       }
     }
-    __syncthreads();*/
+  }
     /*if (edgeDst[srcStart+i_next]==edgeDst[dstStart+j_curr-1]){
      atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
     }
@@ -140,8 +142,8 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
         cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
         cudaDeviceSynchronize();
         __syncthreads();
-        child_tc <<<256,ceil_div(NumSrcEdge+NumDstEdge,256),0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
-
+        child_tc <<<32,ceil_div(NumSrcEdge+NumDstEdge,1024),0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
+        //child_tc<<<1,1,0,s>>>(&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
         cudaDeviceSynchronize();
         __syncthreads();
     }
