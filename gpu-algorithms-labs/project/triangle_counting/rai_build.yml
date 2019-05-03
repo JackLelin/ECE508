@@ -15,7 +15,7 @@ commands:
     - make
     - ./tc -c LINEAR
     - nvprof -o timeline.nvprof ./tc -c LINEAR
-    #- nvprof --kernels "kernel_tc" --analysis-metrics -o kernel_tc.analysis.nvprof ./tc -c LINEAR
+    - nvprof --kernels "kernel_tc" --analysis-metrics -o dynamic.analysis.nvprof ./tc -c LINEAR
     #- nvprof --kernels "child_tc" --analysis-metrics -o child_kernel.analysis.nvprof ./tc -c LINEAR
     # - ./tc -a
 

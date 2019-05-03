@@ -1,7 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <stdio.h>
-
+#include <math.h>
 #include "template.hu"
 //merge_sort
 //Dynmaic parallism
@@ -9,24 +9,6 @@
 
 __host__ __device__ static inline int ceil_div(int x, int y) {
     return (x - 1) / y + 1;
-}
-
-__device__ void merge_sequential(const uint32_t* A, int A_len, const uint32_t* B, int B_len, uint32_t* C) {
-    int i = 0, j = 0, k = 0;
-
-    while ((i < A_len) && (j < B_len)) {
-        C[k++] = A[i] <= B[j] ? A[i++] : B[j++];
-    }
-
-    if (i == A_len) {
-        while (j < B_len) {
-            C[k++] = B[j++];
-        }
-    } else {
-        while (i < A_len) {
-            C[k++] = A[i++];
-        }
-    }
 }
 
 __device__ int co_rank(int k,const uint32_t *A, int m,const uint32_t *B, int n){
@@ -65,7 +47,7 @@ __global__ void child_tc(uint64_t* num_triangle,
 
 
 {
-  
+
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   int k_curr = min(tid * ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);
   int k_next = min((tid+1)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);
@@ -112,31 +94,77 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
                                  const size_t numEdges                  //!< how many edges to count triangles for
 )
 {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if(idx < numEdges && idx < 1000)
-    {
-        int src_start = rowPtr[edgeSrc[idx]]; // row start ptr
-        int src_end = rowPtr[edgeSrc[idx] + 1];
-        int dst_start = rowPtr[edgeDst[idx]]; // col start ptr
-        int dst_end = rowPtr[edgeDst[idx]+1];
-
-        int NumSrcEdge = src_end - src_start;
-        int NumDstEdge = dst_end - dst_start;
-        
-        triangleCounts[idx] = 0;
-        cudaStream_t s;
-        cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
-        cudaDeviceSynchronize();
-        __syncthreads();
-        child_tc <<<32,ceil_div(NumSrcEdge+NumDstEdge,1024),0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
-        cudaDeviceSynchronize();
-        __syncthreads();
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if(idx < numEdges)
+  {
+    int src_start = rowPtr[edgeSrc[idx]]; // row start ptr
+    int src_end = rowPtr[edgeSrc[idx] + 1];
+    int dst_start = rowPtr[edgeDst[idx]]; // col start ptr
+    int dst_end = rowPtr[edgeDst[idx]+1];
+    int src = rowPtr[edgeSrc[idx]];
+    int dst = rowPtr[edgeDst[idx]];
+    int NumSrcEdge = src_end - src_start;
+    int NumDstEdge = dst_end - dst_start;
+    triangleCounts[idx] = 0;
+    float p1 = NumSrcEdge + NumDstEdge;
+    float p2 = NumSrcEdge * log2f((float)NumDstEdge);
+    if (p1 >= p2){//O(A+B)>O(Alog(B))
+      uint64_t num_triangle = 0;
+      int middle;
+      //while (src < src_end && dst < dst_end){  //u_ptr<u_end && v_ptr<v_end
+      for (int i=src;i<src_end;i++){
+        int low = 0;
+        int high = (dst_end-dst)-1;
+        while (high >= low){
+          middle = (low+high)/2;
+          if (edgeDst[dst+middle]==edgeDst[i]){
+             num_triangle += 1;
+             break;
+          }
+          else if(edgeDst[dst+middle] < edgeDst[i]){
+                low = middle + 1;
+          }
+          else{
+            high = middle - 1;
+          }
+        }
+      }
+      triangleCounts[idx] = num_triangle;
     }
-
+    else if (p1 < p2){//O(A+B)<O(Alog(B))
+      int w1 = edgeDst[src], w2 = edgeDst[dst];//w1->Zd[u_ptr] w2->Zd[v_ptr]
+      uint64_t num_triangle = 0;
+      while (src < src_end && dst < dst_end){  //u_ptr<u_end && v_ptr<v_end
+        if (w1 < w2){
+          w1 = edgeDst[++src];//w1<-Zd[++u_ptr]
+        }
+        else if (w1 > w2){
+          w2 = edgeDst[++dst];
+        }
+        else {
+          w1 = edgeDst[++src];
+          w2 = edgeDst[++dst];
+          num_triangle += 1;
+        }
+      }
+      triangleCounts[idx] = num_triangle;
+    }
+    else if (p1>1000/10 && p2>1000/10){
+      printf ("dynamic launch");
+      cudaStream_t s;
+      cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
+      cudaDeviceSynchronize();
+      __syncthreads();
+      child_tc <<<32,ceil_div(NumSrcEdge+NumDstEdge,1024),0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
+      cudaDeviceSynchronize();
+      __syncthreads();
+    }
+  }
+}
   // Determine the source and destination node for the edge
   // Use the row pointer array to determine the start and end of the neighbor list in the column index array
   // Determine how many elements of those two arrays are common
-}
+
 
 __global__ void recursive_k(int depth) {
     int * a;
@@ -202,7 +230,6 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
                                  view.col_ind(),         //!< node ids for edge dsts
                                  view.row_ptr(),          //!< source node offsets in edgeDst
                                  view.nnz());                  //!< how many edges to count triangles for
-
     cudaDeviceSynchronize();
 
     //dim3 dimGrid2 ( ceil(((float)view.nnz()) / (BLOCK_SIZE*2) ));
