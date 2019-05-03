@@ -67,18 +67,14 @@ __global__ void child_tc(uint64_t* num_triangle,
 {
   
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  //if (tid<num_Src+num_Dst){
   int k_curr = min(tid * ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);
   int k_next = min((tid+1)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);
-  //int k_temp = min((tid+2)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);//((num_Dst+num_Src-1)/(blockDim.x*gridDim.x)+1),num_Dst+num_Src);
 
   int i_curr = co_rank(k_curr,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
   int i_next = co_rank(k_next,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
-  //int i_temp = co_rank(k_temp,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
   int j_curr = k_curr - i_curr;
   int j_next = k_next - i_next;
-  //int j_temp = k_temp - i_temp;
-  if (j_next<num_Dst && i_next<num_Src&&i_next>0){
+  if (j_next<num_Dst&&i_next>0&&i_next<num_Src){
     if (edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_next]){//||(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_])
       //printf ("edgeDst[srcStart+i_next-1]= %d,edgeDst[dstStart+j_next]=%d,i_next=%d,j_nex=%d,i_next+j_next=%d,srcStart+i_next-1=%d,dstStart+j_next=%d\n",edgeDst[srcStart+i_next-1],edgeDst[dstStart+j_next],i_next,j_next,i_next+j_next,srcStart+i_next-1,dstStart+j_next,edgeDst[99]);
       atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
@@ -105,16 +101,6 @@ __global__ void child_tc(uint64_t* num_triangle,
       }
     }
   }
-    /*if (edgeDst[srcStart+i_next]==edgeDst[dstStart+j_curr-1]){
-     atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
-    }
-  }
-  else if (j_next-j_curr==0 && i_temp-i_next ==0){
-    if(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_next]){
-      atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
-    }
-  }
-  __syncthreads();*/
 }
 
 #define BLOCK_SIZE 1024
@@ -127,7 +113,7 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
 )
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if(idx < numEdges)
+    if(idx < numEdges && idx < 1000)
     {
         int src_start = rowPtr[edgeSrc[idx]]; // row start ptr
         int src_end = rowPtr[edgeSrc[idx] + 1];
@@ -143,7 +129,6 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
         cudaDeviceSynchronize();
         __syncthreads();
         child_tc <<<32,ceil_div(NumSrcEdge+NumDstEdge,1024),0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
-        //child_tc<<<1,1,0,s>>>(&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
         cudaDeviceSynchronize();
         __syncthreads();
     }
@@ -169,7 +154,7 @@ __global__ void recursive_k(int depth) {
     }
   }
 }
-
+/*
 __global__ void reduct(uint64_t *input, int len) {
 
   __shared__ uint64_t temp[BLOCK_SIZE];
@@ -192,7 +177,7 @@ __global__ void reduct(uint64_t *input, int len) {
   if (threadIdx.x == 0)
     atomicAdd((unsigned long long int*)&(input[len]),(unsigned long long int)temp[0]);
 }
-
+*/
 
 uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode) {
   if (mode == 1) {
@@ -201,7 +186,7 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
     //@@ create a pangolin::Vector (uint64_t) to hold per-edge triangle counts
     // Pangolin is backed by CUDA so you do not need to explicitly copy data between host and device.
     // You may find pangolin::Vector::data() function useful to get a pointer for your kernel to use.
-    pangolin::Vector<uint64_t>tri_nums = pangolin::Vector<uint64_t>(view.nnz()+1) ;
+    pangolin::Vector<uint64_t>tri_nums = pangolin::Vector<uint64_t>(view.nnz()) ;
 
     tri_nums[view.nnz()] = 0;
     //@@ launch the linear search kernel here
@@ -220,10 +205,14 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
 
     cudaDeviceSynchronize();
 
-    dim3 dimGrid2 ( ceil(((float)view.nnz()) / (BLOCK_SIZE*2) ));
-    reduct <<<dimGrid2, dimBlock>>>(tri_nums.data(), view.nnz());
-    cudaDeviceSynchronize();
-    uint64_t total = (tri_nums.data())[view.nnz()] ;
+    //dim3 dimGrid2 ( ceil(((float)view.nnz()) / (BLOCK_SIZE*2) ));
+    //reduct <<<dimGrid2, dimBlock>>>(tri_nums.data(), view.nnz());
+    //cudaDeviceSynchronize();
+    //uint64_t total = (tri_nums.data())[view.nnz()] ;
+    uint64_t total = 0;
+    for (int i =0;i<view.nnz();i++){
+      total += tri_nums[i];
+    }
     return total;
 
   } else if (2 == mode) {
