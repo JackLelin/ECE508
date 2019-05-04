@@ -19,68 +19,75 @@ __global__ static void kernel_shared_tc(uint64_t *__restrict__ triangleCounts, /
 ) 
 {
   __shared__ int edgeDst_S[SHARED_SIZE]; 
+  int srcStart;
+  int numSrc;
   for (int rid = blockIdx.x; rid < numRows; rid += GRID_SIZE)
   {
+    srcStart = rowPtr[rid];
+    numSrc = rowPtr[rid + 1] - srcStart;
 
-  }
-  int idx = threadIdx.x;
-  while ( idx < numSrc && idx < SHARED_SIZE)
-  {
-    edgeDst_S[idx] = edgeDst[srcStart + idx];
-    idx += blockDim.x;
-  }
-  __syncthreads();
-
-  for (int idx = threadIdx.x; idx < numSrc; idx += blockDim.x)
-  {
-    int eid = srcStart + idx;
-
-    uint32_t dst_node = edgeDst[eid];//v
-
-    uint32_t src = 0;//u_ptr->P[u]
-    uint32_t dst = rowPtr[dst_node];//v_ptr->P[v]
-    uint32_t dst_end = rowPtr[dst_node+1];//v_end->P[v+1]
-    
-    uint64_t num_triangle = 0;
-
-    int w1 = edgeDst_S[src], w2 = edgeDst[dst];//w1->Zd[u_ptr] w2->Zd[v_ptr]
-    while (src < numSrc && dst < dst_end)
-    {  
-      if (w1 < w2)
-      {
-        src++;
-        if (src < SHARED_SIZE)
-        {            
-          w1 = edgeDst_S[src];//w1<-Zd[++u_ptr]
-        }          
-        else
-        {
-          w1 = edgeDst[src + srcStart];
-        }
-      }
-      else if (w1 > w2)
-      {
-        dst++;
-        w2 = edgeDst[dst]; 
-      }
-      else 
-      {
-        src++;
-        dst++;
-        if (src < SHARED_SIZE)
-        {            
-          w1 = edgeDst_S[src];//w1<-Zd[++u_ptr]
-        }          
-        else
-        {
-          w1 = edgeDst[src + srcStart];
-        }
-        w2 = edgeDst[dst];
-        num_triangle += 1;
-      }
+    if (numSrc < THRESH)
+      continue;
+    int idx = threadIdx.x;
+    while ( idx < numSrc && idx < SHARED_SIZE)
+    {
+      edgeDst_S[idx] = edgeDst[srcStart + idx];
+      idx += blockDim.x;
     }
-    triangleCounts[eid] = num_triangle;
+    __syncthreads();
+
+    for (idx = threadIdx.x; idx < numSrc; idx += blockDim.x)
+    {
+      int eid = srcStart + idx;
+
+      uint32_t dst_node = edgeDst[eid];//v
+
+      uint32_t src = 0;//u_ptr->P[u]
+      uint32_t dst = rowPtr[dst_node];//v_ptr->P[v]
+      uint32_t dst_end = rowPtr[dst_node+1];//v_end->P[v+1]
+      
+      uint64_t num_triangle = 0;
+
+      int w1 = edgeDst_S[src], w2 = edgeDst[dst];//w1->Zd[u_ptr] w2->Zd[v_ptr]
+      while (src < numSrc && dst < dst_end)
+      {  
+        if (w1 < w2)
+        {
+          src++;
+          if (src < SHARED_SIZE)
+          {            
+            w1 = edgeDst_S[src];//w1<-Zd[++u_ptr]
+          }          
+          else
+          {
+            w1 = edgeDst[src + srcStart];
+          }
+        }
+        else if (w1 > w2)
+        {
+          dst++;
+          w2 = edgeDst[dst]; 
+        }
+        else 
+        {
+          src++;
+          dst++;
+          if (src < SHARED_SIZE)
+          {            
+            w1 = edgeDst_S[src];//w1<-Zd[++u_ptr]
+          }          
+          else
+          {
+            w1 = edgeDst[src + srcStart];
+          }
+          w2 = edgeDst[dst];
+          num_triangle += 1;
+        }
+      }
+      triangleCounts[eid] = num_triangle;
+    }
   }
+  
 }
 
 
@@ -112,7 +119,6 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
     {
       srcStart = view.row_ptr()[rid];
       numSrc = view.row_ptr()[rid+1] - srcStart;
-
 
       if (numSrc < THRESH )
       {
@@ -149,7 +155,7 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
       }
     }
 
-    
+    cudaDeviceSynchronize();
 
     uint64_t * tri_nums_H = new uint64_t[view.nnz()];
     cudaMemcpy(tri_nums_H,tri_nums,view.nnz()*sizeof(uint64_t),cudaMemcpyDeviceToHost);
@@ -159,6 +165,7 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
 
     delete(tri_nums_H);
     cudaFree(tri_nums);
+    
     return total;
 
   } else if (2 == mode) {
