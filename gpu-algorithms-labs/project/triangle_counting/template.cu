@@ -4,137 +4,153 @@
 
 #include "template.hu"
 
+#define CEILDIV(X,Y) (X-1)/Y+1
 
-__global__ void child_tc(uint64_t* num_triangle,
-                        const uint32_t *const edgeDst,
-                        const uint32_t srcStart,
-                        const uint32_t dstStart,
-                        uint32_t num_Src,
-                        uint32_t num_Dst)
-
-
-{
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < num_Src)
-  {
-    for (int j = 0; j < num_Dst; j ++)
-    {
-        if (edgeDst[idx + srcStart] == edgeDst[dstStart + j])
-            atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
-    }
-    
-  }
-}
-
-
+#define SHARED_SIZE 2048 
 #define BLOCK_SIZE 1024
+#define GRID_SIZE 256
+#define THRESH 256
 
-__global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per-edge triangle counts
-                                 const uint32_t *const edgeSrc,         //!< node ids for edge srcs
+__global__ static void kernel_shared_tc(uint64_t *__restrict__ triangleCounts, //!< per-edge triangle counts
+                                 const uint64_t numRows,         //!< node ids for edge srcs
+                                 const uint32_t *const edgeSrc,
                                  const uint32_t *const edgeDst,         //!< node ids for edge dsts
-                                 const uint32_t *const rowPtr,          //!< source node offsets in edgeDst
-                                 const size_t numEdges                  //!< how many edges to count triangles for
+                                 const uint32_t *const rowPtr         //!< source node offsets in edgeDst
 ) 
 {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if(idx < numEdges)
-    {
-        int src_start = rowPtr[edgeSrc[idx]]; // row start ptr
-        int src_end = rowPtr[edgeSrc[idx] + 1];
-        int dst_start = rowPtr[edgeDst[idx]]; // col start ptr
-        int dst_end = rowPtr[edgeDst[idx]+1];
-
-        int NumSrcEdge = src_end - src_start;
-        int NumDstEdge = dst_end - dst_start;
-
-        triangleCounts[idx] = 0; 
-        cudaStream_t s;
-        cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
-
-        child_tc <<<256,(NumSrcEdge-1)/256+1,0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
-
-        cudaDeviceSynchronize();
-        __syncthreads();
-    }
-
-  // Determine the source and destination node for the edge
-  // Use the row pointer array to determine the start and end of the neighbor list in the column index array
-  // Determine how many elements of those two arrays are common
-}
-
-__global__ void recursive_k(int depth) {
-    int * a;
-    cudaMalloc((void**)&a, sizeof(int));
-    *a = 1;
-  // up to depth 6
-  if(depth == 6)
-    return;
-  // launch 1 kernel (2 if depth == 3)
-  if(threadIdx.x == 0) {
-    recursive_k <<< 1, 1 >>> (depth + 1);
-    if(depth == 3) {
-      cudaDeviceSynchronize();
-      recursive_k <<< 1, 1 >>> (depth + 1);
-    }
-  }
-}
-
-__global__ void reduct(uint64_t *input, int len) {
-
-  __shared__ uint64_t temp[BLOCK_SIZE];
-  int id = blockIdx.x * BLOCK_SIZE * 2 + threadIdx.x;
-  temp[threadIdx.x] = id < len ? input[id] : 0;
-  temp[threadIdx.x] += (id + BLOCK_SIZE)<len ? input[id + BLOCK_SIZE] : 0;
-  
-  int space = BLOCK_SIZE>>1;
-  __syncthreads();
-  while (space)
+  __shared__ uint32_t edgeDst_S[SHARED_SIZE]; 
+  int srcStart;
+  int numSrc;
+  for (int rid = blockIdx.x; rid < numRows; rid += gridDim.x)
   {
-    if (threadIdx.x < space)
+    srcStart = rowPtr[rid];
+    numSrc = rowPtr[rid + 1] - srcStart;
+
+    if (numSrc < THRESH)
+      continue;
+    for (int idx = threadIdx.x; idx < SHARED_SIZE; idx += blockDim.x)
     {
-      temp[threadIdx.x] += temp[threadIdx.x + space];
+      edgeDst_S[idx] = (idx < numSrc)?edgeDst[srcStart + idx]:0;
     }
-    space = space >> 1;
+    __syncthreads();
+
+    for (int idx = threadIdx.x; idx < numSrc; idx += blockDim.x)
+    {
+      int eid = srcStart + idx;
+
+      uint32_t dst_node = (idx<SHARED_SIZE)?edgeDst_S[idx]:edgeDst[eid];//v
+
+      uint32_t src = 0;//u_ptr->P[u]
+      uint32_t dst = rowPtr[dst_node];//v_ptr->P[v]
+      uint32_t dst_end = rowPtr[dst_node+1];//v_end->P[v+1]
+      
+      uint64_t num_triangle = 0;
+
+      int w1 = edgeDst_S[src], w2 = edgeDst[dst];//w1->Zd[u_ptr] w2->Zd[v_ptr]
+      while (src < numSrc && dst < dst_end)
+      {  
+        if (w1 < w2)
+        {
+          src++;
+          w1 = (src<SHARED_SIZE)?edgeDst_S[src]:edgeDst[src + srcStart];
+        }
+        else if (w1 > w2)
+        {
+          dst++;
+          w2 = edgeDst[dst]; 
+        }
+        else 
+        {
+          src++;
+          dst++;
+          w1 = (src<SHARED_SIZE)?edgeDst_S[src]:edgeDst[src + srcStart];
+          w2 = edgeDst[dst];
+          num_triangle += 1;
+        }
+      }
+      triangleCounts[eid] = num_triangle;
+    }
     __syncthreads();
   }
-  // atomicAdd((unsigned long long int*)(&(input[len])),(unsigned long long int)*temp) ;
-  if (threadIdx.x == 0)
-    atomicAdd((unsigned long long int*)&(input[len]),(unsigned long long int)temp[0]);
+  
 }
 
 
-uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode) {
+uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode) 
+{
   if (mode == 1) {
 
-    // REQUIRED
+    uint64_t total = 0; 
 
-    //@@ create a pangolin::Vector (uint64_t) to hold per-edge triangle counts
-    // Pangolin is backed by CUDA so you do not need to explicitly copy data between host and device.
-    // You may find pangolin::Vector::data() function useful to get a pointer for your kernel to use.
-    pangolin::Vector<uint64_t>tri_nums = pangolin::Vector<uint64_t>(view.nnz()+1) ;
-
-    tri_nums[view.nnz()] = 0;
-    //@@ launch the linear search kernel here
-    dim3 dimBlock(BLOCK_SIZE);
-    dim3 dimGrid ( ceil(((float)view.nnz()) / BLOCK_SIZE ));
+    uint64_t * tri_nums;
+    cudaMalloc((void**)&tri_nums,(view.nnz())*sizeof(uint64_t));
+    cudaMemset(tri_nums,0,view.nnz()*sizeof(uint64_t));
     
-    // launch from host
-    // recursive_k <<< 1, 1 >>> (0);
-    // printf("============================================================================recursive_k\n");
+    cudaDeviceSynchronize();
+    int srcStart,numSrc;
 
-    kernel_tc <<<dimGrid, dimBlock>>> (tri_nums.data(),  //!< per-edge triangle counts
-                                 view.row_ind(),         //!< node ids for edge srcs
-                                 view.col_ind(),         //!< node ids for edge dsts
-                                 view.row_ptr(),          //!< source node offsets in edgeDst
-                                 view.nnz());                  //!< how many edges to count triangles for
- 
+    const uint32_t * edgeDst = view.col_ind();
+    const uint32_t * rowPtr = view.row_ptr();  
+
+
+    kernel_shared_tc <<<GRID_SIZE, BLOCK_SIZE>>> 
+                                    (tri_nums,  //!< per-edge triangle counts
+                                     view.num_rows(),
+                                     view.row_ind(),
+                                     view.col_ind(),         //!< node ids for edge dsts
+                                     view.row_ptr());                  //!< how many edges to count triangles for 
+
+    for (int rid = 0; rid <view.num_rows(); rid++)
+    {
+      srcStart = view.row_ptr()[rid];
+      numSrc = view.row_ptr()[rid+1] - srcStart;
+
+      if (numSrc < THRESH )
+      {
+        for(int idx = 0; idx < numSrc; idx++)
+        {
+          int eid = idx + srcStart;
+          // uint32_t src_node = view.row_ind()[eid];
+          uint32_t dst_node = edgeDst[eid];//v
+
+          uint32_t src = srcStart;//u_ptr->P[u]
+          uint32_t src_end = srcStart + numSrc;//u_ptr->P[u]
+          uint32_t dst = rowPtr[dst_node];//v_ptr->P[v]
+          uint32_t dst_end = rowPtr[dst_node+1];//v_end->P[v+1]
+          
+          int w1 = edgeDst[src], w2 = edgeDst[dst];//w1->Zd[u_ptr] w2->Zd[v_ptr]
+          while (src < src_end && dst < dst_end)
+          {  //u_ptr<u_end && v_ptr<v_end
+            if (w1 < w2)
+            {
+              w1 = edgeDst[++src];//w1<-Zd[++u_ptr]
+            }
+            else if (w1 > w2)
+            {
+              w2 = edgeDst[++dst];
+            }
+            else 
+            {
+              w1 = edgeDst[++src];
+              w2 = edgeDst[++dst];
+              total += 1;
+            }
+          }
+        }
+      }
+    }
+
     cudaDeviceSynchronize();
 
-    dim3 dimGrid2 ( ceil(((float)view.nnz()) / (BLOCK_SIZE*2) ));
-    reduct <<<dimGrid2, dimBlock>>>(tri_nums.data(), view.nnz());
-    cudaDeviceSynchronize();
-    uint64_t total = (tri_nums.data())[view.nnz()] ;
+    uint64_t * tri_nums_H = new uint64_t[view.nnz()];
+    cudaMemcpy(tri_nums_H,tri_nums,view.nnz()*sizeof(uint64_t),cudaMemcpyDeviceToHost);
 
+    for (int ii = 0; ii < view.nnz(); ii++)
+      total += tri_nums_H[ii];
+
+    delete(tri_nums_H);
+    cudaFree(tri_nums);
+    
     return total;
 
   } else if (2 == mode) {
