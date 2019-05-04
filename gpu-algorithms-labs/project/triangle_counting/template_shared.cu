@@ -157,7 +157,7 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
       total += tri_nums_H[ii];
 
     delete(tri_nums_H);
-    cudaFree(tri_nums_H);
+    cudaFree(tri_nums);
     return total;
 
   } else if (2 == mode) {
