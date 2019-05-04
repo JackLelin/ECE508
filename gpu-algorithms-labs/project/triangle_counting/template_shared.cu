@@ -8,21 +8,17 @@
 
 #define SHARED_SIZE 2048 
 #define BLOCK_SIZE 1024
-#define GRID_SIZE 128
 #define THRESH 512
 
 __global__ static void kernel_shared_tc(uint64_t *__restrict__ triangleCounts, //!< per-edge triangle counts
-                                 const uint64_t numRows,         //!< node ids for edge srcs
-                                 const uint32_t *const edgeSrc,
+                                 const uint32_t srcStart,         //!< node ids for edge srcs
+                                 const uint32_t numSrc,
                                  const uint32_t *const edgeDst,         //!< node ids for edge dsts
                                  const uint32_t *const rowPtr         //!< source node offsets in edgeDst
 ) 
 {
   __shared__ int edgeDst_S[SHARED_SIZE]; 
-  for (int rid = blockIdx.x; rid < numRows; rid += GRID_SIZE)
-  {
 
-  }
   int idx = threadIdx.x;
   while ( idx < numSrc && idx < SHARED_SIZE)
   {
@@ -100,21 +96,22 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
     const uint32_t * edgeDst = view.col_ind();
     const uint32_t * rowPtr = view.row_ptr();  
 
-
-    kernel_shared_tc <<<GRID_SIZE, BLOCK_SIZE>>> 
-                                    (tri_nums,  //!< per-edge triangle counts
-                                     view.num_rows(),
-                                     view.row_ind(),
-                                     view.col_ind(),         //!< node ids for edge dsts
-                                     view.row_ptr());                  //!< how many edges to count triangles for 
-
     for (int rid = 0; rid <view.num_rows(); rid++)
     {
       srcStart = view.row_ptr()[rid];
       numSrc = view.row_ptr()[rid+1] - srcStart;
 
-
-      if (numSrc < THRESH )
+      if (numSrc >= THRESH )
+      {
+        kernel_shared_tc <<<1, BLOCK_SIZE>>> 
+                                    (tri_nums,  //!< per-edge triangle counts
+                                     srcStart,
+                                     numSrc,
+                                     view.col_ind(),         //!< node ids for edge dsts
+                                     view.row_ptr());                  //!< how many edges to count triangles for 
+        cudaDeviceSynchronize();
+      }
+      else
       {
         for(int idx = 0; idx < numSrc; idx++)
         {
@@ -147,6 +144,8 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
           }
         }
       }
+
+      
     }
 
     
