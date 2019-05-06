@@ -5,7 +5,7 @@
 #include "template.hu"
 //merge_sort
 //Dynmaic parallism
-
+#define min(X,Y) X<Y?X:Y
 
 __host__ __device__ static inline int ceil_div(int x, int y) {
     return (x - 1) / y + 1;
@@ -105,29 +105,55 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
     int dst = rowPtr[edgeDst[idx]];
     int NumSrcEdge = src_end - src_start;
     int NumDstEdge = dst_end - dst_start;
-    triangleCounts[idx] = 0;
+    //triangleCounts[idx] = 0;
     float p1 = NumSrcEdge + NumDstEdge;
     float p2 = NumSrcEdge * log2f((float)NumDstEdge);
-    if (p1 >= p2){//O(A+B)>O(Alog(B))
+    if (p1>8192 && p2>8192){
+      //printf ("dynamic launch");
+      cudaStream_t s;
+      //cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);//Illegal memory
+     // cudaDeviceSynchronize();
+     // __syncthreads();
+      child_tc <<<ceil_div(NumSrcEdge+NumDstEdge,8192),128,0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);//Illegal memory
+     // cudaDeviceSynchronize();
+      //__syncthreads();
+    }
+   
+    else if (p1 >= p2){//O(A+B)>O(Alog(B))
+      int start, end, left, right, middle;
+      if(NumSrcEdge > NumDstEdge)
+	{
+          start = dst;
+          end = dst_end;
+          left = src;
+          right = src_end;
+	}
+      else
+      {
+        start = src;
+        end = src_end;
+        left = dst;
+        right = dst_end;
+      }
       uint64_t num_triangle = 0;
-      int middle;
       //while (src < src_end && dst < dst_end){  //u_ptr<u_end && v_ptr<v_end
-      for (int i=src;i<src_end;i++){
-        int low = 0;
-        int high = (dst_end-dst)-1;
+      for (int i=start;i<end;i++){
+        int low = left;
+        int high = right-1;
         while (high >= low){
           middle = (low+high)/2;
-          if (edgeDst[dst+middle]==edgeDst[i]){
+          if (edgeDst[middle]==edgeDst[i]){
              num_triangle += 1;
              break;
           }
-          else if(edgeDst[dst+middle] < edgeDst[i]){
+          else if(edgeDst[middle] < edgeDst[i]){
                 low = middle + 1;
           }
           else{
             high = middle - 1;
           }
         }
+        left = middle;
       }
       triangleCounts[idx] = num_triangle;
     }
@@ -149,23 +175,23 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
       }
       triangleCounts[idx] = num_triangle;
     }
-    else if (p1>1000/10 && p2>1000/10){
-      printf ("dynamic launch");
+/*    else if (p1>1000/10 && p2>1000/10){
+      //printf ("dynamic launch");
       cudaStream_t s;
-      cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
-      cudaDeviceSynchronize();
-      __syncthreads();
-      child_tc <<<32,ceil_div(NumSrcEdge+NumDstEdge,1024),0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
-      cudaDeviceSynchronize();
-      __syncthreads();
-    }
+      //cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);//Illegal memory
+     // cudaDeviceSynchronize();
+     // __syncthreads();
+      child_tc <<<ceil_div(NumSrcEdge+NumDstEdge,1024),32,0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);//Illegal memory
+     // cudaDeviceSynchronize();
+      //__syncthreads();
+    }*/
   }
 }
   // Determine the source and destination node for the edge
   // Use the row pointer array to determine the start and end of the neighbor list in the column index array
   // Determine how many elements of those two arrays are common
 
-
+/*
 __global__ void recursive_k(int depth) {
     int * a;
     cudaMalloc((void**)&a, sizeof(int));
@@ -182,7 +208,7 @@ __global__ void recursive_k(int depth) {
     }
   }
 }
-/*
+
 __global__ void reduct(uint64_t *input, int len) {
 
   __shared__ uint64_t temp[BLOCK_SIZE];
@@ -214,12 +240,11 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
     //@@ create a pangolin::Vector (uint64_t) to hold per-edge triangle counts
     // Pangolin is backed by CUDA so you do not need to explicitly copy data between host and device.
     // You may find pangolin::Vector::data() function useful to get a pointer for your kernel to use.
-    pangolin::Vector<uint64_t>tri_nums = pangolin::Vector<uint64_t>(view.nnz()) ;
+    pangolin::Vector<uint64_t>tri_nums = pangolin::Vector<uint64_t>(view.nnz(),0) ;
 
-    tri_nums[view.nnz()] = 0;
     //@@ launch the linear search kernel here
     dim3 dimBlock(BLOCK_SIZE);
-    dim3 dimGrid (ceil(((float)view.nnz()) / BLOCK_SIZE ));
+    dim3 dimGrid (ceil(((float)view.nnz()) / BLOCK_SIZE ),1,1);
 
     // launch from host
     // recursive_k <<< 1, 1 >>> (0);

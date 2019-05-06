@@ -14,8 +14,8 @@ commands:
     - /opt/cmake/bin/cmake /src -DCMAKE_PREFIX_PATH=${PANGOLIN_INSTALL_DIR} -DGRAPH_PREFIX_PATH=\"/graphs\"
     - make
     - ./tc -c LINEAR
-    - nvprof -o timeline.nvprof ./tc -c LINEAR
-    - nvprof --kernels "kernel_tc" --analysis-metrics -o dynamic.analysis.nvprof ./tc -c LINEAR
+    #- nvprof -o timeline.nvprof ./tc -c LINEAR
+    #- nvprof --kernels "kernel_tc" --analysis-metrics -o kernel_tc.nvprof ./tc -c LINEAR
     #- nvprof --kernels "child_tc" --analysis-metrics -o child_kernel.analysis.nvprof ./tc -c LINEAR
     # - ./tc -a
 

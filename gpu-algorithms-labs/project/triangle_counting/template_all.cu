@@ -1,8 +1,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <stdio.h>
-
+#include <math.h>
 #include "template.hu"
+//merge_sort
+//Dynmaic parallism
+#define min(X,Y) X<Y?X:Y
 
 __host__ __device__ static inline int ceil_div(int x, int y) {
     return (x - 1) / y + 1;
@@ -44,22 +47,23 @@ __global__ void child_tc(uint64_t* num_triangle,
 
 
 {
+
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
-  //int k_curr = tid * ceil_div(A_len+B_len,blockDim.x * gridDim.x);
-  int k_curr = tid * ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x);
-  int k_next = min((tid+1)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);  
-  int k_temp = min((tid+2)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);//((num_Dst+num_Src-1)/(blockDim.x*gridDim.x)+1),num_Dst+num_Src);
+  int k_curr = min(tid * ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);
+  int k_next = min((tid+1)*ceil_div(num_Dst+num_Src,blockDim.x*gridDim.x),num_Dst+num_Src);
 
   int i_curr = co_rank(k_curr,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
   int i_next = co_rank(k_next,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
-  int i_temp = co_rank(k_temp,&edgeDst[srcStart],num_Src,&edgeDst[dstStart],num_Dst);
   int j_curr = k_curr - i_curr;
   int j_next = k_next - i_next;
-  int j_temp = k_temp - i_temp;
-  if (i_next-i_curr != 0 && j_next-j_curr !=0){
-    /*if(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_curr-1]){
+  if (j_next<num_Dst&&i_next>0&&i_next<num_Src){
+    if (edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_next]){//||(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_])
+      //printf ("edgeDst[srcStart+i_next-1]= %d,edgeDst[dstStart+j_next]=%d,i_next=%d,j_nex=%d,i_next+j_next=%d,srcStart+i_next-1=%d,dstStart+j_next=%d\n",edgeDst[srcStart+i_next-1],edgeDst[dstStart+j_next],i_next,j_next,i_next+j_next,srcStart+i_next-1,dstStart+j_next,edgeDst[99]);
       atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
-    }*/
+    }
+  }
+
+  if (j_next-j_curr!=0&&i_next-i_curr!=0){
     int w1 = edgeDst[i_curr+srcStart], w2 = edgeDst[j_curr+dstStart];
     while (i_curr<i_next && j_curr<j_next){
       if (w1<w2){
@@ -79,13 +83,7 @@ __global__ void child_tc(uint64_t* num_triangle,
       }
     }
   }
-  else if (j_next-j_curr==0 && i_temp-i_next ==0){
-    if(edgeDst[srcStart+i_next-1]==edgeDst[dstStart+j_next]){
-      atomicAdd((unsigned long long int*)num_triangle,(unsigned long long int)1);
-    }
-  }
 }
-
 
 #define BLOCK_SIZE 1024
 
@@ -96,32 +94,78 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
                                  const size_t numEdges                  //!< how many edges to count triangles for
 )
 {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if(idx < numEdges)
-    {
-        int src_start = rowPtr[edgeSrc[idx]]; // row start ptr
-        int src_end = rowPtr[edgeSrc[idx] + 1];
-        int dst_start = rowPtr[edgeDst[idx]]; // col start ptr
-        int dst_end = rowPtr[edgeDst[idx]+1];
-
-        int NumSrcEdge = src_end - src_start;
-        int NumDstEdge = dst_end - dst_start;
-
-        triangleCounts[idx] = 0;
-        cudaStream_t s;
-        cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);
-
-        child_tc <<<256,(NumSrcEdge+NumDstEdge-1)/256+1,0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);
-
-        cudaDeviceSynchronize();
-        __syncthreads();
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if(idx < numEdges)
+  {
+    int src_start = rowPtr[edgeSrc[idx]]; // row start ptr
+    int src_end = rowPtr[edgeSrc[idx] + 1];
+    int dst_start = rowPtr[edgeDst[idx]]; // col start ptr
+    int dst_end = rowPtr[edgeDst[idx]+1];
+    int src = rowPtr[edgeSrc[idx]];
+    int dst = rowPtr[edgeDst[idx]];
+    int NumSrcEdge = src_end - src_start;
+    int NumDstEdge = dst_end - dst_start;
+    //triangleCounts[idx] = 0;
+    float p1 = NumSrcEdge + NumDstEdge;
+    float p2 = NumSrcEdge * log2f((float)NumDstEdge);
+    if (p1 >= p2){//O(A+B)>O(Alog(B))
+      uint64_t num_triangle = 0;
+      int middle;
+      //while (src < src_end && dst < dst_end){  //u_ptr<u_end && v_ptr<v_end
+      for (int i=src;i<src_end;i++){
+        int low = 0;
+        int high = (dst_end-dst)-1;
+        while (high >= low){
+          middle = (low+high)/2;
+          if (edgeDst[dst+middle]==edgeDst[i]){
+             num_triangle += 1;
+             break;
+          }
+          else if(edgeDst[dst+middle] < edgeDst[i]){
+                low = middle + 1;
+          }
+          else{
+            high = middle - 1;
+          }
+        }
+      }
+      triangleCounts[idx] = num_triangle;
     }
-
+    else if (p1 < p2){//O(A+B)<O(Alog(B))
+      int w1 = edgeDst[src], w2 = edgeDst[dst];//w1->Zd[u_ptr] w2->Zd[v_ptr]
+      uint64_t num_triangle = 0;
+      while (src < src_end && dst < dst_end){  //u_ptr<u_end && v_ptr<v_end
+        if (w1 < w2){
+          w1 = edgeDst[++src];//w1<-Zd[++u_ptr]
+        }
+        else if (w1 > w2){
+          w2 = edgeDst[++dst];
+        }
+        else {
+          w1 = edgeDst[++src];
+          w2 = edgeDst[++dst];
+          num_triangle += 1;
+        }
+      }
+      triangleCounts[idx] = num_triangle;
+    }
+    else if (p1>1000/10 && p2>1000/10){
+      //printf ("dynamic launch");
+      cudaStream_t s;
+      //cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking);//Illegal memory
+     // cudaDeviceSynchronize();
+     // __syncthreads();
+      child_tc <<<ceil_div(NumSrcEdge+NumDstEdge,1024),32,0,s>>> (&triangleCounts[idx],edgeDst,src_start,dst_start,NumSrcEdge,NumDstEdge);//Illegal memory
+     // cudaDeviceSynchronize();
+      //__syncthreads();
+    }
+  }
+}
   // Determine the source and destination node for the edge
   // Use the row pointer array to determine the start and end of the neighbor list in the column index array
   // Determine how many elements of those two arrays are common
-}
 
+/*
 __global__ void recursive_k(int depth) {
     int * a;
     cudaMalloc((void**)&a, sizeof(int));
@@ -161,22 +205,20 @@ __global__ void reduct(uint64_t *input, int len) {
   if (threadIdx.x == 0)
     atomicAdd((unsigned long long int*)&(input[len]),(unsigned long long int)temp[0]);
 }
-
+*/
 
 uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode) {
   if (mode == 1) {
-
     // REQUIRED
 
     //@@ create a pangolin::Vector (uint64_t) to hold per-edge triangle counts
     // Pangolin is backed by CUDA so you do not need to explicitly copy data between host and device.
     // You may find pangolin::Vector::data() function useful to get a pointer for your kernel to use.
-    pangolin::Vector<uint64_t>tri_nums = pangolin::Vector<uint64_t>(view.nnz()+1) ;
+    pangolin::Vector<uint64_t>tri_nums = pangolin::Vector<uint64_t>(view.nnz(),0) ;
 
-    tri_nums[view.nnz()] = 0;
     //@@ launch the linear search kernel here
     dim3 dimBlock(BLOCK_SIZE);
-    dim3 dimGrid ( ceil(((float)view.nnz()) / BLOCK_SIZE ));
+    dim3 dimGrid (ceil(((float)view.nnz()) / BLOCK_SIZE ),1,1);
 
     // launch from host
     // recursive_k <<< 1, 1 >>> (0);
@@ -187,14 +229,16 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
                                  view.col_ind(),         //!< node ids for edge dsts
                                  view.row_ptr(),          //!< source node offsets in edgeDst
                                  view.nnz());                  //!< how many edges to count triangles for
-
     cudaDeviceSynchronize();
 
-    dim3 dimGrid2 ( ceil(((float)view.nnz()) / (BLOCK_SIZE*2) ));
-    reduct <<<dimGrid2, dimBlock>>>(tri_nums.data(), view.nnz());
-    cudaDeviceSynchronize();
-    uint64_t total = (tri_nums.data())[view.nnz()] ;
-
+    //dim3 dimGrid2 ( ceil(((float)view.nnz()) / (BLOCK_SIZE*2) ));
+    //reduct <<<dimGrid2, dimBlock>>>(tri_nums.data(), view.nnz());
+    //cudaDeviceSynchronize();
+    //uint64_t total = (tri_nums.data())[view.nnz()] ;
+    uint64_t total = 0;
+    for (int i =0;i<view.nnz();i++){
+      total += tri_nums[i];
+    }
     return total;
 
   } else if (2 == mode) {

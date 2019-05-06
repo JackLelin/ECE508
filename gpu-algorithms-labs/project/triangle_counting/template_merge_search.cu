@@ -113,7 +113,7 @@ __global__ static void kernel_tc(uint64_t *__restrict__ triangleCounts, //!< per
 )
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if(idx < numEdges && idx < 1000)
+    if(idx < numEdges)
     {
         int src_start = rowPtr[edgeSrc[idx]]; // row start ptr
         int src_end = rowPtr[edgeSrc[idx] + 1];
