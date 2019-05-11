@@ -6,10 +6,10 @@
 
 #define CEILDIV(X,Y) (X-1)/Y+1
 
-#define SHARED_SIZE 2048 
-#define BLOCK_SIZE 1024
-#define GRID_SIZE 256
-#define THRESH 256
+#define SHARED_SIZE 2560 
+#define BLOCK_SIZE 256
+#define GRID_SIZE 2048
+#define THRESH 4
 
 __global__ static void kernel_shared_tc(uint64_t *__restrict__ triangleCounts, //!< per-edge triangle counts
                                  const uint64_t numRows,         //!< node ids for edge srcs
@@ -105,7 +105,7 @@ uint64_t count_triangles(const pangolin::COOView<uint32_t> view, const int mode)
       srcStart = view.row_ptr()[rid];
       numSrc = view.row_ptr()[rid+1] - srcStart;
 
-      if (numSrc < THRESH )
+      if(numSrc < THRESH )
       {
         for(int idx = 0; idx < numSrc; idx++)
         {
